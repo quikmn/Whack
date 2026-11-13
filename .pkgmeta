@@ -1,0 +1,6 @@
+package-as: Whack
+
+ignore:
+  - README.md
+  - tests
+  - .github
