@@ -117,7 +117,6 @@ local function CreateWindow()
 	f:SetScript("OnDragStart", f.StartMoving)
 	f:SetScript("OnDragStop", f.StopMovingOrSizing)
 	f:Hide()
-	tinsert(UISpecialFrames, "WhackOptionsWindow")
 
 	local bg = U.Solid(f, "BACKGROUND", rgba(T.bg))
 	bg:SetAllPoints()
@@ -177,6 +176,7 @@ local function CreateWindow()
 	feedback:SetPoint("BOTTOMRIGHT", -T.pad, 14)
 
 	f:SetScript("OnHide", function() W.ClosePopup() end)
+	W.CloseOnEscape(f) -- not UISpecialFrames, see there
 	return f
 end
 

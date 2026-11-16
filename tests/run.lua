@@ -39,6 +39,15 @@ local function lastText(key)
 end
 local function clear() ns.Display:Clear("outgoing"); ns.Display:Clear("incoming") end
 
+-- Taint guard: every global the addon assigns (at load or later) is recorded. Addon
+-- code must not write Blizzard globals (in WoW Forever that taints Blizzard's UI and
+-- its secret-value checks fail, e.g. closing the character sheet).
+local globalWrites = {}
+local addonEnv = setmetatable({}, {
+	__index = _G,
+	__newindex = function(_, k, v) globalWrites[k] = true; _G[k] = v end,
+})
+
 step("load TOC files", function()
 	local toc = assert(io.open(ROOT .. "/Whack.toc")):read("*a")
 	for line in toc:gmatch("[^\r\n]+") do
@@ -46,6 +55,7 @@ step("load TOC files", function()
 			local path = ROOT .. "/" .. line:gsub("\\", "/"):gsub("%s+$", "")
 			local chunk, err = loadfile(path)
 			if not chunk then error("syntax: " .. err) end
+			setfenv(chunk, addonEnv)
 			chunk(ADDON, ns)
 		end
 	end
@@ -243,14 +253,48 @@ end)
 
 step("feedback link", function()
 	SlashCmdList.WHACK("feedback")
-	local d = MOCK.popups.WHACK_FEEDBACK
-	check(d, "feedback popup not shown")
-	check(d.EditBox:GetText() == ns.FEEDBACK_URL, "feedback box doesn't hold the URL")
-	d.EditBox:SetText("typed over")
-	StaticPopupDialogs.WHACK_FEEDBACK.EditBoxOnTextChanged(d.EditBox)
-	check(d.EditBox:GetText() == ns.FEEDBACK_URL, "feedback URL can be edited away")
-	StaticPopupDialogs.WHACK_FEEDBACK.EditBoxOnEscapePressed(d.EditBox)
-	check(not MOCK.popups.WHACK_FEEDBACK, "escape didn't close the popup")
+	local d = WhackFeedbackWindow
+	check(d and d:IsShown(), "feedback window not shown")
+	check(d.box:GetText() == ns.FEEDBACK_URL, "feedback box doesn't hold the URL")
+	d.box:SetText("typed over")
+	d.box:GetScript("OnTextChanged")(d.box, true)
+	check(d.box:GetText() == ns.FEEDBACK_URL, "feedback URL can be edited away")
+	d.box:GetScript("OnEscapePressed")(d.box)
+	check(not d:IsShown(), "escape in the box didn't close the window")
+	SlashCmdList.WHACK("bug")
+	check(d:IsShown(), "/whack bug didn't show the window")
+	d.box:GetScript("OnEnterPressed")(d.box)
+	check(not d:IsShown(), "enter didn't close the window")
+	ns.ShowFeedback()
+	d:GetScript("OnKeyDown")(d, "A")
+	check(d:IsShown(), "a normal key closed the window")
+	d:GetScript("OnKeyDown")(d, "ESCAPE")
+	check(not d:IsShown(), "escape didn't close the window")
+	check(next(MOCK.popups) == nil, "a Blizzard StaticPopup was used")
+end)
+
+step("options window closes on Escape without UISpecialFrames", function()
+	if WhackOptionsWindow and WhackOptionsWindow:IsShown() then WhackOptionsWindow:Hide() end
+	ns.Options:Toggle()
+	check(WhackOptionsWindow:IsShown(), "options window not shown")
+	WhackOptionsWindow:GetScript("OnKeyDown")(WhackOptionsWindow, "A")
+	check(WhackOptionsWindow:IsShown(), "a normal key closed the window")
+	WhackOptionsWindow:GetScript("OnKeyDown")(WhackOptionsWindow, "ESCAPE")
+	check(not WhackOptionsWindow:IsShown(), "escape didn't close the window")
+	MOCK.combat = true
+	ns.Options:Toggle()
+	WhackOptionsWindow:GetScript("OnKeyDown")(WhackOptionsWindow, "ESCAPE")
+	MOCK.combat = false
+	check(not WhackOptionsWindow:IsShown(), "escape in combat didn't close the window")
+end)
+
+step("no taint: Blizzard globals left alone", function()
+	local allowed = { WhackDB = true, SLASH_WHACK1 = true }
+	for k in pairs(globalWrites) do
+		check(allowed[k], "addon assigned the global " .. tostring(k))
+	end
+	check(next(UISpecialFrames) == nil, "addon added to UISpecialFrames")
+	check(next(StaticPopupDialogs) == nil, "addon added to StaticPopupDialogs")
 end)
 
 step("no Lua errors reported", function()
