@@ -6,8 +6,9 @@
 ## SavedVariables: WhackDB
 ## IconTexture: Interface\Icons\INV_Wand_07
 
+Libs\LibStub\LibStub.lua
+Libs\EverlookUI\EverlookUI.lua
 Core.lua
-Widgets.lua
 Display.lua
 Combat.lua
 Options.lua

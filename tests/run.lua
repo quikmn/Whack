@@ -342,8 +342,76 @@ step("options window closes on Escape without UISpecialFrames", function()
 	check(not WhackOptionsWindow:IsShown(), "escape in combat didn't close the window")
 end)
 
+step("new options: defaults keep the old behaviour, old saved settings get them", function()
+	check(ns.db.maxActive == 40, "maxActive default")
+	local o, i = ns.db.areas.outgoing, ns.db.areas.incoming
+	check(o.color[1] == 1 and o.color[2] == 1 and o.color[3] == 1, "outgoing colour default not white")
+	check(i.color[1] == 1 and i.color[2] == 0.25 and i.color[3] == 0.25, "incoming colour default not the old red")
+	check(i.healColor[1] == 0.35 and i.healColor[2] == 1, "heal colour default")
+	-- a saved file from before these options: FillDefaults adds them without touching the rest
+	local old = { version = 1, outgoingMode = "all", areas = { outgoing = { fontSize = 30 }, incoming = {} } }
+	ns.Util.FillDefaults(old, ns.DEFAULTS)
+	check(old.outgoingMode == "all" and old.areas.outgoing.fontSize == 30, "old values overwritten")
+	check(old.maxActive == 40 and old.areas.incoming.color[2] == 0.25 and old.areas.outgoing.color[2] == 1, "new defaults missing")
+end)
+
+step("slash settings: every subcommand works, settings set and reply", function()
+	MOCK.log = {}
+	SlashCmdList.WHACK("outgoing.fontsize 22")
+	check(ns.db.areas.outgoing.fontSize == 22, "fontsize not set")
+	check(MOCK.log[#MOCK.log]:find("Outgoing font size: 22", 1, true), "no reply: " .. tostring(MOCK.log[#MOCK.log]))
+	SlashCmdList.WHACK("outgoing.fontsize 400")
+	check(ns.db.areas.outgoing.fontSize == 22, "out of range accepted")
+	check(MOCK.log[#MOCK.log]:find("Example: /whack outgoing.fontsize", 1, true), "no example: " .. MOCK.log[#MOCK.log])
+	SlashCmdList.WHACK("incoming.style arc")
+	check(ns.db.areas.incoming.style == "arc", "style not set")
+	SlashCmdList.WHACK("incoming.outline none")
+	check(ns.db.areas.incoming.outline == "", "outline none")
+	SlashCmdList.WHACK("incoming.healcolor 00ff00")
+	check(ns.db.areas.incoming.healColor[2] == 1 and ns.db.areas.incoming.healColor[1] == 0, "heal colour")
+	SlashCmdList.WHACK("mode all")
+	check(ns.db.outgoingMode == "all", "mode")
+	SlashCmdList.WHACK("maxtexts 25")
+	check(ns.db.maxActive == 25, "maxtexts")
+	for _ = 1, 60 do ns.Combat:TestOne("outgoing") end
+	check(active("outgoing") <= 25, "maxtexts not used: " .. active("outgoing"))
+	clear()
+	SlashCmdList.WHACK("outgoing.enabled off")
+	check(ns.db.areas.outgoing.enabled == false, "enabled off")
+	SlashCmdList.WHACK("outgoing.enabled on")
+	SlashCmdList.WHACK("reset incoming")
+	check(ns.db.areas.incoming.style == "scroll" and ns.db.areas.incoming.outline == "OUTLINE", "reset")
+	SlashCmdList.WHACK("reset")
+	check(MOCK.log[#MOCK.log]:find("Example", 1, true), "reset without an area")
+	SlashCmdList.WHACK("move")
+	check(not ns.db.locked, "move didn't unlock")
+	SlashCmdList.WHACK("move")
+	check(ns.db.locked, "move didn't lock")
+	MOCK.log = {}
+	SlashCmdList.WHACK("settings")
+	check(#MOCK.log > 20, "settings list too short")
+	SlashCmdList.WHACK("nonsense")
+	check(MOCK.log[#MOCK.log]:find("/whack help", 1, true), "unknown command reply")
+	ns.db.maxActive, ns.db.outgoingMode = 40, "smart"
+	ns:ResetArea("outgoing")
+end)
+
+step("the window updates when a setting changes from chat; the position is saved", function()
+	ns.Options:ShowPage("outgoing")
+	SlashCmdList.WHACK("outgoing.fontsize 31")
+	local found
+	for _, w in ipairs(MOCK.widgets) do
+		if w.__kind == "EditBox" and w.__text == "31" then found = true end
+	end
+	check(found, "the slider box doesn't show the new size")
+	WhackOptionsWindow:GetScript("OnDragStop")(WhackOptionsWindow)
+	check(type(ns.db.window) == "table", "window position not saved")
+	WhackOptionsWindow:Hide()
+	ns:ResetArea("outgoing")
+end)
+
 step("no taint: Blizzard globals left alone", function()
-	local allowed = { WhackDB = true, SLASH_WHACK1 = true }
+	local allowed = { WhackDB = true, SLASH_WHACK1 = true, LibStub = true } -- LibStub: the embedded library loader
 	for k in pairs(globalWrites) do
 		check(allowed[k], "addon assigned the global " .. tostring(k))
 	end

@@ -156,7 +156,7 @@ function C:Outgoing(hit, src)
 	local crit = flag == "CRITICAL"
 	local spec = { crit = crit, icon = src and src.icon }
 	if hit.action == "WOUND" then
-		spec.color = SchoolColor(c, hit.school, WHITE)
+		spec.color = SchoolColor(c, hit.school, c.color or WHITE)
 		local amt = num(hit.amount)
 		if amt == 0 and PARTIAL[flag] then
 			spec.text = MISS[flag] or PARTIAL[flag]
@@ -189,14 +189,15 @@ function C:Incoming(action, flag, amount, school)
 			spec.color = GREY
 		else
 			spec.amount = amount
-			spec.color = (school and school ~= 1) and SchoolColor(c, school, HURT) or HURT
+			local hurt = c.color or HURT
+			spec.color = (school and school ~= 1) and SchoolColor(c, school, hurt) or hurt
 			spec.fmt = PARTIAL[flag] and flag ~= "CRUSHING" and ("-%s (" .. PARTIAL[flag] .. ")") or "-%s"
 		end
 	elseif action == "HEAL" then
 		if not c.showHeals then return end
 		spec.amount = amount
 		spec.fmt = "+%s"
-		spec.color = HEAL
+		spec.color = c.healColor or HEAL
 	elseif MISS[action] then
 		if not c.showMisses then return end
 		spec.text = MISS[action]

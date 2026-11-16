@@ -2,13 +2,14 @@
 
 Scrolling combat text for WoW Forever (interface 16001): your hits and the hits you take, where and how you want them.
 
-Written from scratch; no third-party code or libraries.
+Written from scratch. It embeds LibStub (public domain) to load EverlookUI, the settings-window library shared by these addons.
 
 ## Use
-- `/whack` opens the options.
+- `/whack` opens the options (also under Settings > AddOns).
 - `/whack unlock` lets you drag the text areas; `/whack lock` fixes them again.
 - `/whack test` shows fake numbers so you can tune the look.
 - `/whack status` shows what it is doing.
+- `/whack outgoing.fontsize 20` (any setting from `/whack settings`) changes a setting from chat; `/whack reset outgoing` puts an area back to its defaults; `/whack help` lists every command.
 - `/whack feedback` (or the Feedback button in the options) shows a link for reporting bugs and ideas.
 
 ## Features

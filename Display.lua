@@ -9,7 +9,7 @@ local U, T = ns.Util, ns.Theme
 local D = {}
 ns.Display = D
 
-local MAX_ACTIVE = 40
+local MAX_ACTIVE = 40 -- default; the "Most texts on screen" option (ns.db.maxActive) overrides it
 local areas = {}
 local driver = CreateFrame("Frame")
 driver:Hide()
@@ -185,7 +185,7 @@ function D:Spawn(key, spec)
 	local c = cfg(key)
 	if not c or not c.enabled then return end
 	local a = self:GetArea(key)
-	if #a.active >= MAX_ACTIVE then Release(a, 1) end
+	if #a.active >= (ns.db.maxActive or MAX_ACTIVE) then Release(a, 1) end
 
 	local t = Acquire(a)
 	local size = math.floor(c.fontSize * (spec.crit and c.critScale or 1) + 0.5)
