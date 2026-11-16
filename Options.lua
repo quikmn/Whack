@@ -98,7 +98,7 @@ local function BuildGeneral(stack)
 	})
 	W.Note(stack, "How it knows what you hit: this client gives addons no combat log, so Whack watches hits on your target and pairs them with your own swings, wand shots and casts. Solo that is exact. In a group, \"Only mine\" drops hits it cannot pair with something you did, which also drops your damage-over-time ticks. Hits on mobs you are not targeting are not shown.")
 	stack:Space(6)
-	W.Note(stack, "Commands: /whack (this window), /whack unlock, /whack lock, /whack test, /whack status")
+	W.Note(stack, "Commands: /whack (this window), /whack unlock, /whack lock, /whack test, /whack status, /whack feedback")
 end
 
 ------------------------------------------------------------------------
@@ -173,6 +173,8 @@ local function CreateWindow()
 	f.unlock = unlock
 	local test = W.Button(f, "Test both", function() ns.Combat:Test() end, 120)
 	test:SetPoint("LEFT", unlock, "RIGHT", 8, 0)
+	local feedback = W.Button(f, "Feedback / report a bug", function() ns.ShowFeedback() end, 170)
+	feedback:SetPoint("BOTTOMRIGHT", -T.pad, 14)
 
 	f:SetScript("OnHide", function() W.ClosePopup() end)
 	return f

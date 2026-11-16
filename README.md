@@ -9,6 +9,7 @@ Written from scratch; no third-party code or libraries.
 - `/whack unlock` lets you drag the text areas; `/whack lock` fixes them again.
 - `/whack test` shows fake numbers so you can tune the look.
 - `/whack status` shows what it is doing.
+- `/whack feedback` (or the Feedback button in the options) shows a link for reporting bugs and ideas.
 
 ## Features
 - Two areas you can place anywhere: **Outgoing** (your auto attacks, wand shots and spells landing on your target) and **Incoming** (damage and heals you take).

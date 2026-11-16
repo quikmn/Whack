@@ -168,6 +168,39 @@ boot:SetScript("OnEvent", function(self, event, name)
 	ns.Combat:Init()
 end)
 
+-- Feedback link. Addons can't open a browser, so show the link selected in a box to copy.
+ns.FEEDBACK_URL = "https://everlookdb.com/whack.html#feedback"
+StaticPopupDialogs = StaticPopupDialogs or {}
+StaticPopupDialogs["WHACK_FEEDBACK"] = {
+	text = "Report a bug or suggest an idea.\nPress Ctrl+C to copy the link, then paste it in your browser.",
+	button1 = CLOSE or "Close",
+	hasEditBox = true,
+	editBoxWidth = 320,
+	OnShow = function(self)
+		local eb = self.EditBox or self.editBox
+		if not eb then return end
+		eb:SetText(ns.FEEDBACK_URL)
+		eb:SetFocus()
+		eb:HighlightText()
+	end,
+	EditBoxOnTextChanged = function(eb)
+		if eb:GetText() ~= ns.FEEDBACK_URL then
+			eb:SetText(ns.FEEDBACK_URL)
+			eb:HighlightText()
+		end
+	end,
+	EditBoxOnEnterPressed = function() StaticPopup_Hide("WHACK_FEEDBACK") end,
+	EditBoxOnEscapePressed = function() StaticPopup_Hide("WHACK_FEEDBACK") end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3,
+}
+
+function ns.ShowFeedback()
+	StaticPopup_Show("WHACK_FEEDBACK")
+end
+
 SLASH_WHACK1 = "/whack"
 SlashCmdList.WHACK = function(msg)
 	msg = (msg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
@@ -177,8 +210,10 @@ SlashCmdList.WHACK = function(msg)
 		ns.Combat:Test()
 	elseif msg == "status" then
 		ns.Combat:Status()
+	elseif msg == "feedback" or msg == "bug" then
+		ns.ShowFeedback()
 	elseif msg == "help" then
-		ns:Print("/whack - options, /whack unlock | lock - move the areas, /whack test - fake numbers, /whack status")
+		ns:Print("/whack - options, /whack unlock | lock - move the areas, /whack test - fake numbers, /whack status, /whack feedback - link for bugs and ideas")
 	else
 		ns.Options:Toggle()
 	end

@@ -241,6 +241,18 @@ step("slash commands", function()
 	SlashCmdList.WHACK("help")
 end)
 
+step("feedback link", function()
+	SlashCmdList.WHACK("feedback")
+	local d = MOCK.popups.WHACK_FEEDBACK
+	check(d, "feedback popup not shown")
+	check(d.EditBox:GetText() == ns.FEEDBACK_URL, "feedback box doesn't hold the URL")
+	d.EditBox:SetText("typed over")
+	StaticPopupDialogs.WHACK_FEEDBACK.EditBoxOnTextChanged(d.EditBox)
+	check(d.EditBox:GetText() == ns.FEEDBACK_URL, "feedback URL can be edited away")
+	StaticPopupDialogs.WHACK_FEEDBACK.EditBoxOnEscapePressed(d.EditBox)
+	check(not MOCK.popups.WHACK_FEEDBACK, "escape didn't close the popup")
+end)
+
 step("no Lua errors reported", function()
 	check(#MOCK.errors == 0, table.concat(MOCK.errors, "\n"))
 end)
