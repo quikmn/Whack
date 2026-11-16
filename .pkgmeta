@@ -1,6 +1,7 @@
 package-as: Whack
 
 ignore:
+  - screenshots
   - README.md
   - tests
   - .github
