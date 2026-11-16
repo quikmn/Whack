@@ -121,6 +121,7 @@ local AREA = {
 	fontSize = 18,
 	critScale = 1.5,
 	outline = "OUTLINE",    -- "" | OUTLINE | THICKOUTLINE
+	shadow = true,          -- soft drop shadow behind the text (on top of the outline)
 	showIcon = true,
 	iconSide = "left",      -- left | right
 	duration = 1.8,

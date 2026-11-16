@@ -134,8 +134,6 @@ local function Acquire(a)
 		t = CreateFrame("Frame", nil, a)
 		t:SetSize(1, 1)
 		t.text = t:CreateFontString(nil, "OVERLAY")
-		t.text:SetShadowOffset(1, -1)
-		t.text:SetShadowColor(0, 0, 0, 0.8)
 		t.text:SetWordWrap(false)
 		t.icon = t:CreateTexture(nil, "OVERLAY")
 		t.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
@@ -193,6 +191,13 @@ function D:Spawn(key, spec)
 	local size = math.floor(c.fontSize * (spec.crit and c.critScale or 1) + 0.5)
 	if not t.text:SetFont(FontPath(c.font), size, c.outline or "") then
 		t.text:SetFont(U.Font(), size, c.outline or "")
+	end
+	if c.shadow == false then
+		t.text:SetShadowOffset(0, 0)
+		t.text:SetShadowColor(0, 0, 0, 0)
+	else
+		t.text:SetShadowOffset(1, -1)
+		t.text:SetShadowColor(0, 0, 0, 0.8)
 	end
 	local col = spec.color or { 1, 1, 1 }
 	t.text:SetTextColor(col[1], col[2], col[3], 1)

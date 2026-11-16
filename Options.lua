@@ -19,7 +19,7 @@ local STYLES = {
 }
 local DIRECTIONS = { { value = "up", text = "Upwards" }, { value = "down", text = "Downwards" } }
 local ALIGNS = { { value = "left", text = "Left" }, { value = "center", text = "Center" }, { value = "right", text = "Right" } }
-local OUTLINES = { { value = "", text = "None (shadow only)" }, { value = "OUTLINE", text = "Outline" }, { value = "THICKOUTLINE", text = "Thick outline" } }
+local OUTLINES = { { value = "", text = "None" }, { value = "OUTLINE", text = "Outline" }, { value = "THICKOUTLINE", text = "Thick outline" } }
 local SIDES = { { value = "left", text = "Left of the number" }, { value = "right", text = "Right of the number" } }
 local NUMBERS = { { value = "short", text = "Short (12.3k)" }, { value = "full", text = "Full (12,345)" } }
 local MODES = {
@@ -65,6 +65,8 @@ local function BuildArea(stack, key)
 	W.Slider(stack, opt("fontSize", { label = "Font size", min = 8, max = 48 }))
 	W.Slider(stack, opt("critScale", { label = "Critical hits: size multiplier", min = 1, max = 3, step = 0.05, fmt = "%.2f" }))
 	W.Dropdown(stack, opt("outline", { label = "Outline", items = OUTLINES, width = 300 }))
+	W.Toggle(stack, opt("shadow", { label = "Drop shadow behind the text",
+		desc = "A soft shadow under the letters. With an outline as well the edges get heavier; turn it off for a cleaner, sharper look." }))
 	W.Dropdown(stack, opt("align", { label = "Alignment inside the area", items = ALIGNS, width = 300 }))
 	W.Dropdown(stack, opt("numberFormat", { label = "Numbers", items = NUMBERS, width = 300 }))
 	W.Toggle(stack, opt("colorSchool", { label = "Colour by spell school (fire orange, shadow purple...)" }))
@@ -191,8 +193,9 @@ function O:ShowPage(id)
 	for pid, p in pairs(pages) do p.scroll:SetShown(pid == id) end
 	if not pages[id] then
 		local scroll = W.ScrollPage(window.content)
-		local stack = W.Stack(scroll.child, WIDTH - 2 * T.pad - 12)
-		scroll.child:SetWidth(WIDTH - 2 * T.pad)
+		local width = WIDTH - 2 * T.pad - 24 -- the scroll bar takes the right edge
+		local stack = W.Stack(scroll.child, width)
+		scroll.child:SetWidth(width)
 		BUILDERS[id](stack)
 		pages[id] = { scroll = scroll, stack = stack }
 		scroll.UpdateBar()

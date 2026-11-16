@@ -240,6 +240,60 @@ step("options window: every page builds and refreshes", function()
 	SlashCmdList.WHACK("")
 end)
 
+step("options: the wheel scrolls the page, the bar drags, sliders ignore the wheel", function()
+	if not WhackOptionsWindow:IsShown() then SlashCmdList.WHACK("") end
+	ns.Options:ShowPage("outgoing")
+	local scroll
+	for _, c in ipairs(WhackOptionsWindow.content.__children) do
+		if c.__kind == "ScrollFrame" and c:IsShown() then scroll = c end
+	end
+	check(scroll and scroll.track, "no page scroll with a bar")
+	scroll.SetVerticalScroll = function(self, v) self.__vs = v end
+	scroll.GetVerticalScroll = function(self) return self.__vs or 0 end
+	local child, track = scroll.child, scroll.track
+	scroll.__h, child.__h, track.__h = 400, 1500, 420
+	scroll.UpdateBar()
+	check(track:IsShown(), "bar hidden with content to scroll")
+	check(track:GetWidth() >= 12, "bar too narrow to grab")
+
+	scroll:GetScript("OnMouseWheel")(scroll, -1)
+	check(scroll:GetVerticalScroll() == 40, "wheel down didn't scroll 40, got " .. scroll:GetVerticalScroll())
+	scroll:GetScript("OnMouseWheel")(scroll, 5)
+	check(scroll:GetVerticalScroll() == 0, "wheel up went past the top")
+
+	local thumb = track.__children[#track.__children]
+	local cy, down = 300, true
+	local oldCursor, oldDown = GetCursorPosition, IsMouseButtonDown
+	GetCursorPosition = function() return 0, cy end
+	IsMouseButtonDown = function() return down end
+	thumb:GetScript("OnMouseDown")(thumb, "RightButton")
+	check(not thumb.dragging, "right button grabbed the thumb")
+	thumb:GetScript("OnMouseDown")(thumb, "LeftButton")
+	cy = 250
+	thumb:GetScript("OnUpdate")(thumb)
+	local v = scroll:GetVerticalScroll()
+	check(v > 0 and v == math.floor(v), "dragging the thumb down didn't scroll to a whole pixel: " .. v)
+	cy = -5000
+	thumb:GetScript("OnUpdate")(thumb)
+	check(scroll:GetVerticalScroll() == 1100, "drag past the end didn't stop at the bottom")
+	down = false
+	thumb:GetScript("OnUpdate")(thumb)
+	check(not thumb.dragging, "drag kept going after the button was released")
+
+	scroll.__vs = 0
+	cy = 100 -- below the thumb (mock GetBottom is 400)
+	track:GetScript("OnMouseDown")(track, "LeftButton")
+	check(scroll:GetVerticalScroll() == 360, "clicking the track didn't jump a page: " .. scroll:GetVerticalScroll())
+	GetCursorPosition, IsMouseButtonDown = oldCursor, oldDown
+
+	child.__h = 300
+	scroll.UpdateBar()
+	check(not track:IsShown(), "bar shown with nothing to scroll")
+	for _, w in ipairs(MOCK.widgets) do
+		if w.__kind == "Slider" then check(not w.__scripts.OnMouseWheel, "a slider takes the mouse wheel") end
+	end
+end)
+
 step("slash commands", function()
 	SlashCmdList.WHACK("unlock")
 	check(not ns.db.locked, "unlock failed")
