@@ -43,12 +43,14 @@ ns.app = app
 ------------------------------------------------------------------------
 app:Setting({
 	key = "mode", type = "choice", label = "Outgoing: whose hits to show", choices = MODES, width = 320,
+	keywords = { "filter", "group", "only mine", "everything" },
 	get = function() return ns.db.outgoingMode end,
 	set = function(v) ns.db.outgoingMode = v end,
 	desc = "The game only tells addons that your target was hit, not by whom. Whack matches hits to your own swings and casts. Solo, everything on your target is shown either way.",
 })
 app:Setting({
 	key = "maxtexts", type = "number", label = "Most texts on screen per area", min = 10, max = 100,
+	keywords = { "limit", "max", "clutter", "spam" },
 	get = function() return ns.db.maxActive end,
 	set = function(v) ns.db.maxActive = v end,
 	desc = "When a fight floods an area, the oldest text goes first.",
@@ -81,6 +83,33 @@ local AREA_OPTIONS = {
 	{ "height", "number", "Height (how far text travels)", { min = 40, max = 700 } },
 }
 
+-- more words the window's search finds an area option by
+local KEYWORDS = {
+	enabled = { "on", "off", "disable" },
+	style = { "animation", "motion" },
+	direction = { "up", "down" },
+	duration = { "speed", "fade", "time", "seconds" },
+	font = { "typeface" },
+	fontSize = { "text size", "bigger", "smaller" },
+	critScale = { "crit", "size", "bigger" },
+	outline = { "border", "stroke" },
+	shadow = { "outline" },
+	align = { "justify" },
+	numberFormat = { "abbreviate", "short", "thousands", "format" },
+	colorSchool = { "colour", "fire", "frost", "nature", "school" },
+	color = { "colour" },
+	showMisses = { "dodge", "parry", "resist", "block", "absorb", "immune" },
+	critBang = { "exclamation", "crit" },
+	showHeals = { "healing" },
+	healColor = { "colour", "healing" },
+	showIcon = { "spell icon", "weapon" },
+	iconSide = { "left", "right" },
+	x = { "position", "move", "offset", "horizontal" },
+	y = { "position", "move", "offset", "vertical" },
+	width = { "size" },
+	height = { "size", "distance" },
+}
+
 for _, area in ipairs({ "outgoing", "incoming" }) do
 	local Area = area:sub(1, 1):upper() .. area:sub(2)
 	for _, o in ipairs(AREA_OPTIONS) do
@@ -88,7 +117,7 @@ for _, area in ipairs({ "outgoing", "incoming" }) do
 		if not extra.only or extra.only == area then
 			label = label:format(area)
 			local def = {
-				key = area .. "." .. field:lower(), type = kind, label = label,
+				key = area .. "." .. field:lower(), type = kind, label = label, keywords = KEYWORDS[field],
 				-- chat replies say which area: "Outgoing font size: 20"
 				chatLabel = field == "enabled" and label or (Area .. " " .. label:sub(1, 1):lower() .. label:sub(2)),
 				get = function() return ns.db.areas[area][field] end,
@@ -132,7 +161,7 @@ local function BuildArea(stack, area)
 			or "Damage and heals you take.")
 	UI.ButtonRow(stack, {
 		{ label = "Show test numbers", style = "accent", width = 160, onClick = function() ns.Combat:Test(area) end },
-		{ label = "Reset this area", width = 160, confirm = true, onClick = function()
+		{ label = "Reset this area", width = 160, confirm = true, keywords = { "defaults" }, onClick = function()
 			ns:ResetArea(area)
 			app:Refresh()
 		end },

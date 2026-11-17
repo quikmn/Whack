@@ -419,6 +419,19 @@ step("no taint: Blizzard globals left alone", function()
 	check(next(StaticPopupDialogs) == nil, "addon added to StaticPopupDialogs")
 end)
 
+step("settings search finds area options on both pages, by keyword too", function()
+	local app = ns.app
+	app:Open("general")
+	local r = app:Search("dodge")
+	check(#r == 2, "'dodge' should find Show misses in both areas, found " .. #r)
+	local paths = r[1].entry.path .. " | " .. r[2].entry.path
+	check(paths:find("Outgoing", 1, true) and paths:find("Incoming", 1, true), "paths: " .. paths)
+	r = app:Search("incoming font size")
+	check(#r >= 1 and r[1].entry.info.key == "incoming.fontsize", "'incoming font size' not first: " .. tostring(r[1] and r[1].entry.info.key))
+	app:Search("")
+	app:Close()
+end)
+
 step("no Lua errors reported", function()
 	check(#MOCK.errors == 0, table.concat(MOCK.errors, "\n"))
 end)
