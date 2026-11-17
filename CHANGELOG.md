@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Chat commands now follow one pattern across all EverlookDB addons: `/whack help` (or `?`) lists them; `get` and `set <setting> <value>`; `/whack off outgoing.enabled`; `search <words>`; `status` and `version`; `/whack reset outgoing` asks first (type it again within 10 seconds); a mistyped command suggests the nearest one. `/whack move`, `lock` and `unlock` work as before.
 - The settings window has a search box at the top: type to find any setting.
 
 ## v0.2.0 (2026-11-17)

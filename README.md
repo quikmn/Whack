@@ -9,7 +9,9 @@ Written from scratch. It embeds LibStub (public domain) to load EverlookUI, the 
 - `/whack unlock` lets you drag the text areas; `/whack lock` fixes them again.
 - `/whack test` shows fake numbers so you can tune the look.
 - `/whack status` shows what it is doing.
-- `/whack outgoing.fontsize 20` (any setting from `/whack settings`) changes a setting from chat; `/whack reset outgoing` puts an area back to its defaults; `/whack help` lists every command.
+- `/whack outgoing.fontsize 20` or `/whack set outgoing.fontsize 20` changes a setting from chat (`/whack get` lists them; `/whack outgoing.enabled off` switches an area off).
+- `/whack reset outgoing` (or `incoming`) puts an area back to its defaults: type it twice within 10 seconds.
+- `/whack search <words>` opens the options with the search box filled; `/whack version`; `/whack help` (or `?`) lists every command, and a mistyped one suggests the nearest. They follow the same pattern as every EverlookDB addon.
 - `/whack feedback` (or the Feedback button in the options) shows a link for reporting bugs and ideas.
 
 ## Features

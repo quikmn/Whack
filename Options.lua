@@ -133,22 +133,12 @@ end
 ------------------------------------------------------------------------
 -- Commands
 ------------------------------------------------------------------------
-app:Command("unlock", "unlock", "show the text areas so you can drag them", function() ns.Display:SetLocked(false) end)
-app:Command("lock", "lock", "hide the area frames again", function() ns.Display:SetLocked(true) end)
-app:Command("move", "move", "unlock, or lock when unlocked", function() ns.Display:SetLocked(not ns.db.locked) end)
+-- /whack unlock, lock and move; reset outgoing|incoming (asks first); status; feedback: the shared EverlookUI verbs.
+app:Movable({ what = "the text areas", get = function() return ns.db.locked end, set = function(locked) ns.Display:SetLocked(locked) end })
+app:Reset("outgoing", "the outgoing area", function() ns:ResetArea("outgoing") end)
+app:Reset("incoming", "the incoming area", function() ns:ResetArea("incoming") end)
+app:StatusLines(function() ns.Combat:Status() end) -- what Whack has seen since login
 app:Command("test", "test", "fake numbers in both areas", function() ns.Combat:Test() end)
-app:Command("reset", "reset outgoing|incoming", "put an area back to its defaults", function(rest)
-	local key = rest:lower():match("^%s*(%a+)")
-	if key ~= "outgoing" and key ~= "incoming" then
-		app:Print("|cffff6060say which area.|r Example: /whack reset outgoing")
-		return
-	end
-	ns:ResetArea(key)
-	app:Refresh()
-	app:Print("the " .. key .. " area is back to its defaults.")
-end)
-app:Command("status", "status", "what Whack has seen since login", function() ns.Combat:Status() end)
-app:Command("feedback", "feedback", "a link for bugs and ideas", function() ns.ShowFeedback() end, { "bug" })
 
 ------------------------------------------------------------------------
 -- Window sections
@@ -211,7 +201,7 @@ app:Section("general", "General", function(stack)
 	app:Widget(stack, "maxtexts")
 	UI.Note(stack, "How it knows what you hit: this client gives addons no combat log, so Whack watches hits on your target and pairs them with your own swings, wand shots and casts. Solo that is exact. In a group, \"Only mine\" drops hits it cannot pair with something you did, which also drops your damage-over-time ticks. Hits on mobs you are not targeting are not shown.")
 	UI.Header(stack, "Chat commands", "Everything here can also be done from chat.")
-	UI.Note(stack, "/whack  this window\n/whack unlock, /whack lock  move the areas\n/whack test  fake numbers\n/whack reset outgoing  an area back to its defaults\n/whack status, /whack feedback\n/whack settings  every setting with its value\n/whack outgoing.fontsize 20  change one (names from /whack settings)\n/whack help  all of this in chat")
+	UI.Note(stack, "/whack  this window\n/whack unlock, /whack lock  move the areas\n/whack test  fake numbers\n/whack reset outgoing  an area back to its defaults (type it twice)\n/whack status, /whack feedback\n/whack outgoing.fontsize 20  change a setting (/whack get lists them)\n/whack search <words>  find a setting\n/whack help  all of this in chat")
 end)
 
 ------------------------------------------------------------------------

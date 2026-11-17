@@ -93,5 +93,5 @@ function ns.ShowFeedback()
 	return ns.app:ShowFeedback()
 end
 
-SLASH_WHACK1 = "/whack"
+SLASH_WHACK1 = "/whack" -- ns.app:RegisterSlash would need the app, which Options.lua makes after this file
 SlashCmdList.WHACK = function(msg) ns.app:HandleSlash(msg) end
