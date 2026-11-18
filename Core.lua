@@ -62,6 +62,15 @@ ns.DEFAULTS = {
 	areas = {
 		outgoing = Area({ x = 260, y = 40 }),
 		incoming = Area({ x = -260, y = 40, direction = "down", fontSize = 16, critScale = 1.35, color = { 1, 0.25, 0.25 } }),
+		-- loot, skill-ups and the rest (Notify.lua): off until you turn it on; calmer and slower than the hits
+		notify = Area({ enabled = false, x = 0, y = 210, width = 320, height = 150, fontSize = 15, duration = 3,
+			critScale = 1.3 }),
+	},
+	-- what the notifications area shows (once it is on): loot and skill-ups, the rest when you tick them
+	notify = {
+		loot = true, quality = 0, money = false, currency = false,
+		skill = true, rep = false, xp = false, honor = false, level = false,
+		quest = false, bagsFull = false,
 	},
 }
 ns.AREA_DEFAULTS = AREA
@@ -84,6 +93,7 @@ boot:SetScript("OnEvent", function(self, event, name)
 	ns.db.locked = true -- always start locked
 	ns.Display:Init()
 	ns.Combat:Init()
+	ns.Notify:Init()
 end)
 
 -- Feedback link (opens in Whack's own small window; see EverlookUI.LinkWindow).

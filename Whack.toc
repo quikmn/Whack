@@ -11,4 +11,5 @@ Libs\EverlookUI\EverlookUI.lua
 Core.lua
 Display.lua
 Combat.lua
+Notify.lua
 Options.lua

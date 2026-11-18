@@ -450,6 +450,323 @@ step("settings search finds area options on both pages, by keyword too", functio
 	app:Close()
 end)
 
+------------------------------------------------------------------------
+-- Notifications (Notify.lua)
+------------------------------------------------------------------------
+-- The game's format strings, as the client has them (enUS). Whack must only ever use these, never English.
+LOOT_ITEM_SELF = "You receive loot: %s."
+LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d."
+LOOT_ITEM_PUSHED_SELF = "You receive item: %s."
+LOOT_ITEM_PUSHED_SELF_MULTIPLE = "You receive item: %sx%d."
+LOOT_ITEM_CREATED_SELF = "You create: %s."
+LOOT_ITEM = "%s receives loot: %s."
+CURRENCY_GAINED = "You receive currency: %s."
+CURRENCY_GAINED_MULTIPLE = "You receive currency: %s x%d."
+SKILL_RANK_UP = "Your skill in %s has increased to %d."
+FACTION_STANDING_INCREASED = "Your %s reputation has increased by %d."
+FACTION_STANDING_INCREASED_ACH_BONUS = "Your %s reputation has increased by %d. (+%.1f bonus)"
+FACTION_STANDING_DECREASED = "Your %s reputation has decreased by %d."
+COMBATLOG_HONORAWARD = "You have been awarded %d honor points."
+ERR_QUEST_ADD_ITEM_SII = "%s: %d/%d"
+ERR_QUEST_ADD_KILL_SII = "%s slain: %d/%d"
+ERR_INV_FULL = "Inventory is full."
+LEVEL_GAINED = "Level %d"
+XP = "XP"
+HONOR = "Honor"
+ITEM_QUALITY_COLORS = {
+	[0] = { hex = "|cff9d9d9d" }, [1] = { hex = "|cffffffff" }, [2] = { hex = "|cff1eff00" },
+	[3] = { hex = "|cff0070dd" }, [4] = { hex = "|cffa335ee" },
+}
+local ITEMS = {
+	[2589] = { "Linen Cloth", 1, "icon-linen" },
+	[2934] = { "Ruined Leather Scraps", 0, "icon-scraps" },
+	[6070] = { "Wolfskin Bracers", 2, "icon-bracers" },
+}
+GetItemInfo = function(link)
+	local id = tonumber(tostring(link):match("item:(%d+)"))
+	local d = id and ITEMS[id]
+	if not d then return nil end
+	return d[1], link, d[2], 10, 5, "Trade Goods", "Cloth", 20, "", d[3]
+end
+local money, xp, xpMax, level = 5000, 100, 1000, 10
+GetMoney = function() return money end
+UnitXP = function() return xp end
+UnitXPMax = function() return xpMax end
+UnitLevel = function() return level end
+
+local function link(id, colorHex)
+	return colorHex .. "|Hitem:" .. id .. "::::::::|h[" .. ITEMS[id][1] .. "]|h|r"
+end
+local LINEN, SCRAPS, BRACERS = link(2589, "|cffffffff"), link(2934, "|cff9d9d9d"), link(6070, "|cff1eff00")
+local function nactive() return active("notify") end
+local function ntext(i)
+	local a = ns.Display:GetArea("notify")
+	local t = a.active[i or #a.active]
+	return t and t.text:GetText(), t
+end
+-- run C_Timer.After callbacks only (MOCK.RunTimers would also tick the test ticker left from /whack test)
+local function settle()
+	for _ = 1, 30 do
+		advance(0.2)
+		local t = MOCK.timers
+		MOCK.timers = {}
+		for _, fn in ipairs(t) do fn() end
+	end
+end
+local function nclear()
+	settle()
+	ns.Display:Clear("notify")
+	ns.Notify:Clear()
+	advance(5)
+end
+
+step("notify: off by default; loot and skill-ups ticked, the rest not", function()
+	local o = ns.db.notify
+	check(ns.db.areas.notify.enabled == false, "notifications should start off")
+	check(o.loot and o.skill, "loot and skill-ups should be ticked")
+	check(not (o.money or o.currency or o.rep or o.xp or o.honor or o.level or o.quest or o.bagsFull), "the rest should be off")
+	check(o.quality == 0, "every quality by default")
+	MOCK.Fire("CHAT_MSG_LOOT", "You receive loot: " .. LINEN .. ".", "", "", "", "Tester")
+	settle()
+	check(nactive() == 0, "loot shown while notifications are off")
+end)
+
+step("notify: format strings become patterns (positional, %%, floats)", function()
+	local N = ns.Notify
+	local pat = N.ToPattern("You receive loot: %sx%d.")
+	check(pat == "^You receive loot: (.+)x(%-?%d+)%.$", "pattern: " .. pat)
+	local _, order = N.ToPattern("%2$s gains %1$d (100%%)")
+	check(order[1] == 2 and order[2] == 1, "positional order")
+	check(("Bob gains 5 (100%)"):match((N.ToPattern("%2$s gains %1$d (100%%)"))) == "Bob", "%% and positional don't match")
+	local which, args = N.Match("Your Stormwind reputation has increased by 25. (+2.5 bonus)", N.REP_UP)
+	check(which == "FACTION_STANDING_INCREASED_ACH_BONUS" and args[1] == "Stormwind" and args[2] == "25", "rep bonus: " .. tostring(which))
+	ERR_QUEST_UNKNOWN_COMPLETE = "Objective Complete."
+	which, args = N.Match("Objective Complete.", N.QUEST_FORMATS)
+	check(which == "ERR_QUEST_UNKNOWN_COMPLETE" and args and args[1] == nil, "a format with no arguments")
+	-- another language: only the global changes
+	local saved = LOOT_ITEM_SELF
+	LOOT_ITEM_SELF = "Ihr erhaltet Beute: %s."
+	which, args = N.Match("Ihr erhaltet Beute: " .. LINEN .. ".", N.LOOT_FORMATS)
+	check(which == "LOOT_ITEM_SELF" and args[1] == LINEN, "localised loot string not matched")
+	LOOT_ITEM_SELF = saved
+end)
+
+step("notify: /whack loot on turns the area on; loot shows icon, quality colour and count", function()
+	SlashCmdList.WHACK("loot on")
+	check(ns.db.areas.notify.enabled, "/whack loot on didn't turn notifications on")
+	MOCK.Fire("CHAT_MSG_LOOT", "You receive loot: " .. BRACERS .. ".", "", "", "", "Tester")
+	check(nactive() == 1, "loot not shown: " .. nactive())
+	local text, t = ntext()
+	check(text == "|cff1eff00Wolfskin Bracers|r", "text: " .. tostring(text))
+	check(t.icon:IsShown() and t.entry.icon == "icon-bracers", "icon: " .. tostring(t.entry.icon))
+	advance(2)
+	MOCK.Fire("CHAT_MSG_LOOT", "You receive item: " .. LINEN .. "x4.", "", "", "", "Tester")
+	check(ntext() == "|cffffffffLinen Cloth|r|cffcccccc \195\1514|r", "count: " .. tostring(ntext()))
+	nclear()
+end)
+
+step("notify: someone else's loot and roll messages are ignored", function()
+	MOCK.Fire("CHAT_MSG_LOOT", "Member2 receives loot: " .. LINEN .. ".", "", "", "", "Member2")
+	MOCK.Fire("CHAT_MSG_LOOT", "Need Roll - 54 for " .. LINEN .. " by Member2", "", "", "", "")
+	check(nactive() == 0, "not my loot shown")
+end)
+
+step("notify: the same item within a second merges into one line", function()
+	MOCK.Fire("CHAT_MSG_LOOT", "You receive loot: " .. LINEN .. "x2.", "", "", "", "Tester")
+	advance(0.4)
+	MOCK.Fire("CHAT_MSG_LOOT", "You receive loot: " .. LINEN .. "x3.", "", "", "", "Tester")
+	check(nactive() == 1, "merged loot made " .. nactive() .. " lines")
+	check(ntext():find("\195\1515", 1, true), "merged count: " .. ntext())
+	local _, t = ntext()
+	check(t.pulse, "a merged line should pulse")
+	advance(1.5) -- too late to merge
+	MOCK.Fire("CHAT_MSG_LOOT", "You receive loot: " .. LINEN .. ".", "", "", "", "Tester")
+	check(nactive() == 2, "loot after the merge window should be a new line")
+	nclear()
+end)
+
+step("notify: mass loot is throttled and capped, nothing lost to the merge", function()
+	local saved = ITEMS
+	for id = 9000, 9019 do ITEMS[id] = { "Thing " .. id, 1, "icon" } end
+	for id = 9000, 9019 do
+		MOCK.Fire("CHAT_MSG_LOOT", "You receive loot: " .. link(id, "|cffffffff") .. ".", "", "", "", "Tester")
+	end
+	check(nactive() == 1, "a mass loot should show one line at once, not " .. nactive())
+	-- the same item again while it waits in the queue joins its queued line
+	MOCK.Fire("CHAT_MSG_LOOT", "You receive loot: " .. link(9003, "|cffffffff") .. "x2.", "", "", "", "Tester")
+	local t = MOCK.timers; MOCK.timers = {}; for _, fn in ipairs(t) do fn() end -- too soon: the gap holds the next line back
+	check(nactive() == 1, "throttle ignored")
+	settle()
+	check(nactive() == 10, "expected 1 + 8 queued + one '+N more' line, got " .. nactive())
+	local found3, more
+	for i = 1, nactive() do
+		local s = ntext(i)
+		if s:find("Thing 9003", 1, true) then found3 = s end
+		if s:find("+11 more", 1, true) then more = true end
+	end
+	check(found3 and found3:find("\195\1513", 1, true), "queued merge: " .. tostring(found3))
+	check(more, "no '+11 more' line")
+	nclear()
+end)
+
+step("notify: minimum quality hides cheaper items", function()
+	SlashCmdList.WHACK("loot.quality uncommon")
+	check(ns.db.notify.quality == 2, "quality not set by name: " .. tostring(ns.db.notify.quality))
+	MOCK.Fire("CHAT_MSG_LOOT", "You receive loot: " .. SCRAPS .. ".", "", "", "", "Tester")
+	MOCK.Fire("CHAT_MSG_LOOT", "You receive loot: " .. LINEN .. ".", "", "", "", "Tester")
+	settle()
+	check(nactive() == 0, "grey/white shown at uncommon and up")
+	MOCK.Fire("CHAT_MSG_LOOT", "You receive loot: " .. BRACERS .. ".", "", "", "", "Tester")
+	check(nactive() == 1, "green hidden at uncommon and up")
+	-- unknown item: quality from the link's colour, or from the newer |cnIQ form
+	check(ns.Notify.ParseItem("|cff0070dd|Hitem:99999::|h[Mystery]|h|r").quality == 3, "quality from colour")
+	check(ns.Notify.ParseItem("|cnIQ4:|Hitem:99998::|h[Epic Thing]|h|r").quality == 4, "quality from |cnIQ")
+	SlashCmdList.WHACK("loot.quality 0")
+	nclear()
+end)
+
+step("notify: money formatting with coin icons", function()
+	local F = ns.Notify.FormatMoney
+	local G, S_, C = "|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t", "|TInterface\\MoneyFrame\\UI-SilverIcon:0:0:2:0|t", "|TInterface\\MoneyFrame\\UI-CopperIcon:0:0:2:0|t"
+	check(F(12345) == "1" .. G .. " 23" .. S_ .. " 45" .. C, "12345: " .. F(12345))
+	check(F(50000) == "5" .. G, "50000: " .. F(50000))
+	check(F(105) == "1" .. S_ .. " 5" .. C, "105: " .. F(105))
+	check(F(7) == "7" .. C, "7: " .. F(7))
+	check(F(0) == "0" .. C, "0: " .. F(0))
+end)
+
+step("notify: money gains from PLAYER_MONEY merge; spending shows nothing", function()
+	SlashCmdList.WHACK("money on")
+	ns.Notify:ReadMoney()
+	money = money + 150; MOCK.Fire("PLAYER_MONEY")
+	check(nactive() == 1, "money gain not shown")
+	money = money + 10000; MOCK.Fire("PLAYER_MONEY")
+	check(nactive() == 1 and ntext():find("^1|T"), "money didn't merge: " .. tostring(ntext()))
+	advance(3)
+	money = money - 500; MOCK.Fire("PLAYER_MONEY")
+	check(nactive() == 1, "spending shown")
+	nclear()
+end)
+
+step("notify: skill-ups, reputation, XP, honour, level, quest, bags full", function()
+	SlashCmdList.WHACK("rep on"); SlashCmdList.WHACK("xp on"); SlashCmdList.WHACK("honor on")
+	SlashCmdList.WHACK("levelup on"); SlashCmdList.WHACK("quest on"); SlashCmdList.WHACK("bagsfull on")
+	MOCK.Fire("CHAT_MSG_SKILL", "Your skill in Mining has increased to 112.")
+	check(ntext() == "Mining 112", "skill: " .. tostring(ntext()))
+	advance(0.3)
+	MOCK.Fire("CHAT_MSG_SKILL", "Your skill in Mining has increased to 113.")
+	check(ntext() == "Mining 113" and nactive() == 1, "skill should update in place: " .. tostring(ntext()))
+	advance(2)
+	MOCK.Fire("CHAT_MSG_COMBAT_FACTION_CHANGE", "Your Stormwind reputation has increased by 25.")
+	check(ntext() == "+25 Stormwind", "rep: " .. tostring(ntext()))
+	advance(2)
+	MOCK.Fire("CHAT_MSG_COMBAT_FACTION_CHANGE", "Your Defias Brotherhood reputation has decreased by 5.")
+	check(ntext() == "-5 Defias Brotherhood", "rep loss: " .. tostring(ntext()))
+	advance(2)
+	ns.Notify:ReadXP()
+	xp = 440; MOCK.Fire("PLAYER_XP_UPDATE", "player")
+	check(ntext() == "+340 XP", "xp: " .. tostring(ntext()))
+	advance(2)
+	level, xp = 11, 60; MOCK.Fire("PLAYER_LEVEL_UP", 11); MOCK.Fire("PLAYER_XP_UPDATE", "player")
+	settle()
+	local all = {}
+	for i = 1, nactive() do all[#all + 1] = ntext(i) end
+	all = table.concat(all, " | ")
+	check(all:find("Level 11", 1, true), "level up: " .. all)
+	check(all:find("+620 XP", 1, true), "xp across a level: " .. all)
+	advance(2)
+	MOCK.Fire("CHAT_MSG_COMBAT_HONOR_GAIN", "You have been awarded 12 honor points.")
+	check(ntext() == "+12 Honor", "honor: " .. tostring(ntext()))
+	advance(2)
+	MOCK.Fire("UI_INFO_MESSAGE", 1, "Turtle Meat: 3/10")
+	check(ntext() == "Turtle Meat: 3/10", "quest: " .. tostring(ntext()))
+	advance(0.3)
+	local n = nactive()
+	MOCK.Fire("UI_INFO_MESSAGE", 1, "Turtle Meat: 4/10")
+	check(ntext() == "Turtle Meat: 4/10" and nactive() == n, "quest progress should update its line")
+	MOCK.Fire("UI_INFO_MESSAGE", 1, "Mailbox: you have mail") -- not a quest message
+	check(nactive() == n, "non-quest info shown")
+	advance(2)
+	MOCK.Fire("UI_ERROR_MESSAGE", 3, "Inventory is full.")
+	check(ntext() == "Inventory is full.", "bags full: " .. tostring(ntext()))
+	advance(1)
+	MOCK.Fire("UI_ERROR_MESSAGE", 3, "Inventory is full.")
+	check(nactive() == n + 1, "bags full repeated too often")
+	SlashCmdList.WHACK("rep off")
+	advance(2)
+	MOCK.Fire("CHAT_MSG_COMBAT_FACTION_CHANGE", "Your Stormwind reputation has increased by 25.")
+	check(nactive() == n + 1, "rep shown while off")
+	nclear()
+end)
+
+step("notify: secret messages and totals are never parsed or compared", function()
+	-- a secret loot message: shown as it is only when the readable GUID says it's mine
+	local guid = UnitGUID("player")
+	MOCK.Fire("CHAT_MSG_LOOT", S("You receive loot: x."), "", "", "", "Tester", "", 0, 0, "", 0, 0, guid)
+	check(nactive() == 1, "my secret loot not shown raw")
+	local _, t = ntext()
+	check(MOCK.isSecret(t.text:GetText()), "raw secret not shown as it is")
+	MOCK.Fire("CHAT_MSG_LOOT", S("Member2 receives loot: x."), "", "", "", "Member2", "", 0, 0, "", 0, 0, "Player-1-Member2")
+	MOCK.Fire("CHAT_MSG_LOOT", S("?"), "", "", "", S("?"), "", 0, 0, "", 0, 0, S(guid))
+	check(nactive() == 1, "secret loot shown when it may not be mine")
+	advance(2)
+	SlashCmdList.WHACK("rep on")
+	MOCK.Fire("CHAT_MSG_SKILL", S("Your skill in Mining has increased to 114."))
+	MOCK.Fire("CHAT_MSG_COMBAT_FACTION_CHANGE", S("Your Stormwind reputation has increased by 25."))
+	MOCK.Fire("UI_INFO_MESSAGE", 1, S("Turtle Meat: 5/10"))
+	MOCK.Fire("UI_ERROR_MESSAGE", 3, S("Inventory is full."))
+	settle()
+	check(nactive() == 3, "secret skill/rep should show raw, quest/bags nothing; got " .. nactive())
+	-- secret totals: no maths, no text, and the next readable total starts over
+	local oldMoney, oldXP = GetMoney, UnitXP
+	GetMoney = function() return S(money + 999) end
+	UnitXP = function() return S(xp + 5) end
+	MOCK.Fire("PLAYER_MONEY"); MOCK.Fire("PLAYER_XP_UPDATE", "player")
+	GetMoney, UnitXP = oldMoney, oldXP
+	money = money + 1; xp = xp + 1
+	MOCK.Fire("PLAYER_MONEY"); MOCK.Fire("PLAYER_XP_UPDATE", "player")
+	settle()
+	check(nactive() == 3, "a secret total made text: " .. nactive())
+	check(#MOCK.errors == 0, table.concat(MOCK.errors, "\n"))
+	nclear()
+end)
+
+step("notify: chat commands, test, reset, search, the window page", function()
+	MOCK.log = {}
+	SlashCmdList.WHACK("notify off")
+	check(ns.db.areas.notify.enabled == false, "notify off")
+	SlashCmdList.WHACK("notify test")
+	check(MOCK.log[#MOCK.log]:find("/whack notify on", 1, true), "test while off should say how to turn it on")
+	SlashCmdList.WHACK("notifications on")
+	check(ns.db.areas.notify.enabled, "notifications on")
+	SlashCmdList.WHACK("notify test")
+	settle()
+	check(nactive() >= 6, "test notifications: " .. nactive())
+	nclear()
+	SlashCmdList.WHACK("notify.fontsize 20")
+	check(ns.db.areas.notify.fontSize == 20, "notify.fontsize")
+	SlashCmdList.WHACK("reset notify"); SlashCmdList.WHACK("reset notify")
+	check(ns.db.areas.notify.fontSize == 15 and ns.db.areas.notify.enabled == false and ns.db.notify.money == false
+		and ns.db.notify.rep == false, "reset notify")
+	check(not ns.app:GetSetting("notify.critscale") and not ns.app:GetSetting("notify.showmisses"), "hit-only options on notify")
+	for _, word in ipairs({ "loot", "items", "skill", "profession", "reputation", "rep", "xp", "money", "gold", "quest" }) do
+		local r = ns.app:Search(word)
+		local hit
+		for _, x in ipairs(r) do
+			if x.entry.path:find("Notifications", 1, true) then hit = true end
+		end
+		check(hit, "search '" .. word .. "' doesn't find a notifications setting")
+	end
+	ns.app:Search("")
+	ns.Options:ShowPage("notify")
+	ns.Options:Refresh()
+	ns.app:Close()
+	-- unlock shows the notifications area too
+	ns.Display:SetLocked(false)
+	check(ns.Display:GetArea("notify").mover:IsShown(), "notify mover hidden while unlocked")
+	ns.Display:SetLocked(true)
+end)
+
 step("no Lua errors reported", function()
 	check(#MOCK.errors == 0, table.concat(MOCK.errors, "\n"))
 end)
