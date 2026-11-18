@@ -19,6 +19,7 @@ Written from scratch. It embeds LibStub (public domain) to load EverlookUI, the 
 - Several animations per area (scroll, arc, cascade, burst), with direction, font, size and alignment.
 - Bigger critical hits (size multiplier), optional "!" on crits.
 - Heals you receive can be shown or hidden.
+- Optional **Notifications** area: loot (icon, quality colour, ×count), skill-ups, and if you like money, currencies, reputation, XP, honour, level up, quest progress and bags full. `/whack notify on`, then `/whack loot on`, `/whack rep on`, ... pick what it shows.
 
 ## Install
 WowUp: pick **World of Warcraft: Forever**, then Get Addons → Install from URL, and paste `https://github.com/quikmn/Whack`.
