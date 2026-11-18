@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 (2026-11-18)
 
 - Settings: an AI help button copies a description of every setting for an AI assistant, and `/whack apply` runs the commands it gives back.
 - New **Notifications** area (off until you turn it on: `/whack notify on`, or the Notifications page): loot you get (icon, name in its quality colour, ×count; the same item within a second joins one line), skill-ups ("Mining 112"), and if you tick them money (with coin icons), currencies, reputation ("+25 Stormwind"), XP, honour, level up, quest progress and "Inventory is full". A minimum loot quality, its own place, motion and font, and a mass loot scrolls calmly instead of piling up. From chat: `/whack loot on`, `/whack rep on`, `/whack loot.quality uncommon`, `/whack notify test`, `/whack reset notify`.
