@@ -26,7 +26,7 @@ end
 ------------------------------------------------------------------------
 -- Areas and movers
 ------------------------------------------------------------------------
-local LABELS = { outgoing = "Outgoing (your hits)", incoming = "Incoming (hits on you)" }
+local LABELS = { outgoing = "Outgoing (your hits)", incoming = "Incoming (hits on you)", notify = "Notifications (loot, skill-ups)" }
 
 local function SavePosition(a)
 	local cx, cy = a:GetCenter()
@@ -117,6 +117,7 @@ end
 ------------------------------------------------------------------------
 local function Release(a, i)
 	local t = table.remove(a.active, i)
+	t.mergeKey, t.entry, t.pulse = nil, nil, nil
 	t:Hide()
 	t:ClearAllPoints()
 	a.pool[#a.pool + 1] = t
@@ -203,6 +204,8 @@ function D:Spawn(key, spec)
 	t.text:SetTextColor(col[1], col[2], col[3], 1)
 	if spec.amount ~= nil then
 		t.text:SetFormattedText(spec.fmt or "%s", FormatAmount(spec.amount, c.numberFormat))
+	elseif spec.raw ~= nil then
+		t.text:SetText(spec.raw) -- a secret message, shown as it is
 	else
 		t.text:SetText(spec.text or "")
 	end
@@ -214,6 +217,7 @@ function D:Spawn(key, spec)
 	t.born = GetTime()
 	t.dur = c.duration
 	t.crit = spec.crit
+	t.mergeKey = spec.mergeKey
 	t.lineH = math.floor(c.fontSize * 1.3 + 0.5)
 	t.bump = 0
 	t.slot = 0
@@ -227,6 +231,22 @@ function D:Spawn(key, spec)
 	self:Place(a, c, t, t.born)
 	driver:Show()
 	return t
+end
+
+-- The newest text on screen in this area with this merge key (notifications: "Linen Cloth x2" becomes x5).
+function D:FindMerge(key, mergeKey)
+	local a = areas[key]
+	if not a or mergeKey == nil then return end
+	for i = #a.active, 1, -1 do
+		if a.active[i].mergeKey == mergeKey then return a.active[i] end
+	end
+end
+
+-- New text for a line already on screen, with a small pulse so the change is noticed.
+function D:Retext(t, text)
+	t.text:SetText(text)
+	t.pulse = GetTime()
+	driver:Show()
 end
 
 ------------------------------------------------------------------------
@@ -303,6 +323,10 @@ function D:Place(a, c, t, now)
 
 	if t.crit and c.style ~= "burst" then
 		scale = scale * (1 + 0.45 * (1 - math.min(1, age / 0.15)))
+	end
+	if t.pulse then
+		local q = (now - t.pulse) / 0.18
+		if q >= 1 then t.pulse = nil else scale = scale * (1 + 0.18 * (1 - q)) end
 	end
 	t:SetScale(scale)
 	t:ClearAllPoints()
