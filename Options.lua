@@ -26,6 +26,11 @@ local app = UI:NewApp({
 	addon = ADDON,
 	slash = "/whack",
 	tagline = "Scrolling combat text: your hits and the hits you take.",
+	aiAbout = "Whack is scrolling combat text. It has three areas on screen, each with its own settings: outgoing (the hits "
+		.. "you deal, on your target), incoming (the hits you take and heals you receive) and notifications (loot, money, "
+		.. "skill-ups, reputation, XP and more; off until switched on). Area settings are keyed by area: outgoing.fontsize, "
+		.. "incoming.style, notify.enabled. Positions are pixels from the screen centre; /whack unlock shows the areas to drag.",
+	siteURL = "https://everlookdb.com/whack.html",
 	accent = ns.ACCENT,
 	position = function() return ns.db end,
 	feedbackURL = ns.FEEDBACK_URL,
@@ -44,14 +49,14 @@ ns.app = app
 app:Setting({
 	key = "mode", type = "choice", label = "Outgoing: whose hits to show", choices = MODES, width = 320,
 	keywords = { "filter", "group", "only mine", "everything" },
-	get = function() return ns.db.outgoingMode end,
+	get = function() return ns.db.outgoingMode end, default = ns.DEFAULTS.outgoingMode,
 	set = function(v) ns.db.outgoingMode = v end,
 	desc = "The game only tells addons that your target was hit, not by whom. Whack matches hits to your own swings and casts. Solo, everything on your target is shown either way.",
 })
 app:Setting({
 	key = "maxtexts", type = "number", label = "Most texts on screen per area", min = 10, max = 100,
 	keywords = { "limit", "max", "clutter", "spam" },
-	get = function() return ns.db.maxActive end,
+	get = function() return ns.db.maxActive end, default = ns.DEFAULTS.maxActive,
 	set = function(v) ns.db.maxActive = v end,
 	desc = "When a fight floods an area, the oldest text goes first.",
 })
@@ -142,6 +147,7 @@ for _, area in ipairs({ "outgoing", "incoming", "notify" }) do
 				-- chat replies say which area: "Outgoing font size: 20"
 				chatLabel = field == "enabled" and label or (Area .. " " .. label:sub(1, 1):lower() .. label:sub(2)),
 				get = function() return ns.db.areas[area][field] end,
+				default = function() return ns.DEFAULTS.areas[area][field] end,
 				set = function(v) ns.db.areas[area][field] = v end,
 				after = function() ns.Display:Layout(area) end,
 			}
@@ -197,6 +203,7 @@ for _, k in ipairs(KINDS) do
 		key = key, type = kind, label = label, desc = desc, keywords = keywords,
 		chatLabel = "Notifications: " .. label:sub(1, 1):lower() .. label:sub(2),
 		get = function() return ns.db.notify[field] end,
+		default = function() return ns.DEFAULTS.notify[field] end,
 		set = function(v) ns.db.notify[field] = v end,
 		after = kind == "bool" and NotifyOn or nil,
 	}
