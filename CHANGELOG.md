@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+
+- A hit that was fully absorbed (a shield, for one) now shows "Absorbed" instead of "-0 (absorbed)". A partly absorbed hit shows how much got through: "Absorbed (-57)".
 ## v0.3.0 (2026-11-18)
 
 - Settings: an AI help button copies a description of every setting for an AI assistant, and `/whack apply` runs the commands it gives back.

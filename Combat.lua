@@ -35,7 +35,7 @@ local GREY = { 0.7, 0.7, 0.7 }
 
 local MISS = {
 	MISS = "Miss", DODGE = "Dodge", PARRY = "Parry", BLOCK = "Block", RESIST = "Resist",
-	IMMUNE = "Immune", EVADE = "Evade", ABSORB = "Absorb", DEFLECT = "Deflect", REFLECT = "Reflect",
+	IMMUNE = "Immune", EVADE = "Evade", ABSORB = "Absorbed", DEFLECT = "Deflect", REFLECT = "Reflect",
 }
 local PARTIAL = { GLANCING = "glancing", CRUSHING = "crushing", ABSORB = "absorbed", BLOCK = "blocked", RESIST = "resisted" }
 
@@ -44,6 +44,22 @@ C.SCHOOL, C.MISS = SCHOOL, MISS
 local function readable(v) return v ~= nil and not (issecretvalue and issecretvalue(v)) end
 local function str(v) if readable(v) and type(v) == "string" then return v end return "" end
 local function num(v) if readable(v) and type(v) == "number" then return v end return nil end
+
+-- A hit with the absorb flag whose amount is secret (in combat): "Absorbed" when nothing got through, else
+-- "Absorbed (-123)". The amount can't be compared, so the game's C_StringUtil does it: TruncateWhenZero gives "" for
+-- 0, WrapString adds the brackets only around a non-empty number. nil when the client lacks them (old text then).
+local function AbsorbedText(amount, minus)
+	local SU = C_StringUtil
+	if not (SU and SU.TruncateWhenZero and SU.WrapString) then return nil end
+	local ok, digits = pcall(SU.TruncateWhenZero, amount)
+	if not ok or digits == nil then return nil end
+	local ok2, tail = pcall(SU.WrapString, digits, minus and " (-" or " (", ")")
+	if not ok2 or tail == nil then return nil end
+	local ok3, text = pcall(SU.WrapString, "Absorbed", nil, tail)
+	if not ok3 or text == nil then return nil end
+	return text
+end
+C.AbsorbedText = AbsorbedText
 
 local function SchoolColor(c, school, fallback)
 	if c.colorSchool and school and SCHOOL[school] then return SCHOOL[school] end
@@ -158,9 +174,12 @@ function C:Outgoing(hit, src)
 	if hit.action == "WOUND" then
 		spec.color = SchoolColor(c, hit.school, c.color or WHITE)
 		local amt = num(hit.amount)
+		local absorbed = amt == nil and flag == "ABSORB" and AbsorbedText(hit.amount, false)
 		if amt == 0 and PARTIAL[flag] then
 			spec.text = MISS[flag] or PARTIAL[flag]
 			spec.color = GREY
+		elseif absorbed then
+			spec.raw = absorbed
 		else
 			spec.amount = hit.amount
 			if crit then
@@ -184,8 +203,12 @@ function C:Incoming(action, flag, amount, school)
 	local spec = { crit = crit }
 	if action == "WOUND" then
 		local amt = num(amount)
+		local absorbed = amt == nil and flag == "ABSORB" and AbsorbedText(amount, true)
 		if amt == 0 and PARTIAL[flag] then
 			spec.text = MISS[flag] or PARTIAL[flag]
+			spec.color = GREY
+		elseif absorbed then
+			spec.raw = absorbed
 			spec.color = GREY
 		else
 			spec.amount = amount

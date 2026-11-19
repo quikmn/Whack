@@ -16,6 +16,7 @@ local function step(name, fn)
 	end
 end
 local function check(cond, msg) if not cond then error(msg, 2) end end
+local function eq(a, b, what) if a ~= b then error((what or "value") .. ": expected " .. tostring(b) .. ", got " .. tostring(a), 2) end end
 
 -- Extra API this addon uses
 BreakUpLargeNumbers = function(n) return n end
@@ -171,7 +172,21 @@ end)
 step("readable zero amount with absorb flag shows the word", function()
 	MOCK.Fire("UNIT_COMBAT", "player", "WOUND", "ABSORB", 0, 1)
 	check(active("incoming") == 1, "absorb not shown")
+	local a = ns.Display:GetArea("incoming")
+	check(a.active[1].text:GetText() == "Absorbed", "readable full absorb: " .. tostring(a.active[1].text:GetText()))
 	clear()
+end)
+
+step("secret amounts with the absorb flag: \"Absorbed\" when all of it was absorbed, never \"-0 (absorbed)\"", function()
+	local a = ns.Display:GetArea("incoming")
+	MOCK.Fire("UNIT_COMBAT", "player", "WOUND", "ABSORB", MOCK.Secret(0), 1)
+	check(active("incoming") == 1, "not shown")
+	eq(MOCK.real(a.active[1].text:GetText()), "Absorbed", "fully absorbed")
+	MOCK.Fire("UNIT_COMBAT", "player", "WOUND", "ABSORB", MOCK.Secret(57), 1)
+	eq(MOCK.real(a.active[2].text:GetText()), "Absorbed (-57)", "partly absorbed")
+	clear()
+	eq(ns.Combat.AbsorbedText(MOCK.Secret(0), false) and MOCK.real(ns.Combat.AbsorbedText(MOCK.Secret(0), false)), "Absorbed", "outgoing word")
+	eq(MOCK.real(ns.Combat.AbsorbedText(MOCK.Secret(12), false)), "Absorbed (12)", "outgoing partial")
 end)
 
 for _, style in ipairs({ "scroll", "arc", "cascade", "burst" }) do

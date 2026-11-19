@@ -39,6 +39,23 @@ local function isSecret(v) return type(v) == "table" and getmetatable(v) == "sec
 MOCK.isSecret = isSecret
 
 function issecretvalue(v) return isSecret(v) end
+-- The game's secret-safe string helpers (StringUtilDocumentation: SecretArguments = "AllowedWhenTainted").
+local function real(v) if isSecret(v) then return rawget(v, "__real") end return v end
+MOCK.real = real
+C_StringUtil = {
+	TruncateWhenZero = function(n)
+		local r = real(n)
+		local s = math.floor(r) == 0 and "" or tostring(math.floor(r))
+		if isSecret(n) then return MOCK.Secret(s) end
+		return s
+	end,
+	WrapString = function(infix, prefix, suffix)
+		local i, p, s = real(infix), real(prefix) or "", real(suffix) or ""
+		local out = i == "" and "" or (p .. i .. s)
+		if isSecret(infix) or isSecret(prefix) or isSecret(suffix) then return MOCK.Secret(out) end
+		return out
+	end,
+}
 function canaccessvalue(v) return not isSecret(v) end
 function issecrettable(t) return false end
 
