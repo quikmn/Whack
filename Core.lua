@@ -57,6 +57,7 @@ end
 ns.DEFAULTS = {
 	version = 1,
 	locked = true,
+	hideBlizzardDamage = true, -- the game's own damage numbers over your target, while Whack's outgoing area is on
 	outgoingMode = "smart", -- smart | all
 	maxActive = 40,         -- most texts on screen per area
 	areas = {
@@ -94,7 +95,56 @@ boot:SetScript("OnEvent", function(self, event, name)
 	ns.Display:Init()
 	ns.Combat:Init()
 	ns.Notify:Init()
+	self:RegisterEvent("PLAYER_LOGIN")
+	self:RegisterEvent("PLAYER_LOGOUT")
+	self:RegisterEvent("PLAYER_REGEN_ENABLED")
+	self:SetScript("OnEvent", function(_, ev)
+		if ev == "PLAYER_LOGOUT" then ns.ApplyBlizzardDamage(true)
+		elseif ev == "PLAYER_LOGIN" or ns.fctPending then ns.ApplyBlizzardDamage() end
+	end)
 end)
+
+------------------------------------------------------------------------
+-- Blizzard's floating damage numbers (the CVar floatingCombatTextCombatDamage): with Whack's outgoing area on they
+-- would show every hit twice, so Whack switches them off. What you had comes back when the setting or the outgoing
+-- area is turned off, and at every logout (so with Whack disabled the game's numbers are there); the next login
+-- switches them off again.
+------------------------------------------------------------------------
+local FCT = "floatingCombatTextCombatDamage"
+local function getCVar(k)
+	local f = (C_CVar and C_CVar.GetCVar) or GetCVar
+	if not f then return nil end
+	local ok, v = pcall(f, k)
+	if ok and type(v) == "string" then return v end
+	return nil
+end
+local function setCVar(k, v)
+	local f = (C_CVar and C_CVar.SetCVar) or SetCVar
+	if f then pcall(f, k, v) end
+end
+ns.FCT_CVAR = FCT
+
+-- leaving: logging out (put the player's value back, remember to hide again next login).
+function ns.ApplyBlizzardDamage(leaving)
+	local db = ns.db
+	if not db then return end
+	if leaving then
+		if db.savedFCT ~= nil then setCVar(FCT, db.savedFCT) end
+		return
+	end
+	if InCombatLockdown and InCombatLockdown() then ns.fctPending = true return end
+	ns.fctPending = nil
+	local want = db.hideBlizzardDamage and db.areas.outgoing.enabled
+	local now = getCVar(FCT)
+	if want then
+		if now == nil then return end -- this client has no such setting
+		if db.savedFCT == nil then db.savedFCT = now end
+		if now ~= "0" then setCVar(FCT, "0") end
+	elseif db.savedFCT ~= nil then
+		setCVar(FCT, db.savedFCT)
+		db.savedFCT = nil
+	end
+end
 
 -- Feedback link (opens in Whack's own small window; see EverlookUI.LinkWindow).
 ns.FEEDBACK_URL = "https://everlookdb.com/whack.html#feedback"

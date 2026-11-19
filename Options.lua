@@ -54,6 +54,15 @@ app:Setting({
 	desc = "The game only tells addons that your target was hit, not by whom. Whack matches hits to your own swings and casts. Solo, hits it can't match (damage over time, your pet) count as yours unless someone else is fighting your target (tapped by them, or it attacks another player).",
 })
 app:Setting({
+	key = "blizzarddamage", type = "bool", label = "Hide Blizzard's own damage numbers (so hits don't show twice)",
+	keywords = { "floating combat text", "fct", "blizzard", "default", "double", "twice", "numbers", "cvar" },
+	get = function() return ns.db.hideBlizzardDamage end, default = ns.DEFAULTS.hideBlizzardDamage,
+	set = function(v) ns.db.hideBlizzardDamage = v end,
+	after = function() ns.ApplyBlizzardDamage() end,
+	desc = "While Whack shows your outgoing hits, the game's damage numbers over your target are switched off. "
+		.. "Turning this (or Whack's outgoing area) off, and every logout, puts back what you had.",
+})
+app:Setting({
 	key = "maxtexts", type = "number", label = "Most texts on screen per area", min = 10, max = 100,
 	keywords = { "limit", "max", "clutter", "spam" },
 	get = function() return ns.db.maxActive end, default = ns.DEFAULTS.maxActive,
@@ -149,7 +158,10 @@ for _, area in ipairs({ "outgoing", "incoming", "notify" }) do
 				get = function() return ns.db.areas[area][field] end,
 				default = function() return ns.DEFAULTS.areas[area][field] end,
 				set = function(v) ns.db.areas[area][field] = v end,
-				after = function() ns.Display:Layout(area) end,
+				after = function()
+					ns.Display:Layout(area)
+					if area == "outgoing" and field == "enabled" then ns.ApplyBlizzardDamage() end
+				end,
 			}
 			for k, v in pairs(extra) do if k ~= "only" then def[k] = v end end
 			app:Setting(def)
@@ -339,6 +351,7 @@ app:Section("notify", "Notifications", BuildNotify)
 app:Section("general", "General", function(stack)
 	UI.Header(stack, "General")
 	app:Widget(stack, "mode")
+	app:Widget(stack, "blizzarddamage")
 	app:Widget(stack, "maxtexts")
 	UI.Note(stack, "How it knows what you hit: this client gives addons no combat log, so Whack watches hits on your target and pairs them with your own swings, wand shots and casts. Solo that is exact, unless another player fights your target: then only the hits it can pair with you show. In a group, \"Only mine\" drops hits it cannot pair with something you did, which also drops your damage-over-time ticks. Hits on mobs you are not targeting are not shown.")
 	UI.Header(stack, "Chat commands", "Everything here can also be done from chat.")

@@ -39,6 +39,11 @@ local function isSecret(v) return type(v) == "table" and getmetatable(v) == "sec
 MOCK.isSecret = isSecret
 
 function issecretvalue(v) return isSecret(v) end
+MOCK.cvars = { floatingCombatTextCombatDamage = "1" }
+C_CVar = {
+	GetCVar = function(k) return MOCK.cvars[k] end,
+	SetCVar = function(k, v) MOCK.cvars[k] = tostring(v) end,
+}
 -- The game's secret-safe string helpers (StringUtilDocumentation: SecretArguments = "AllowedWhenTainted").
 local function real(v) if isSecret(v) then return rawget(v, "__real") end return v end
 MOCK.real = real

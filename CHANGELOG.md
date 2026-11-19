@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Your hits no longer show twice: while Whack shows your outgoing hits, the game's own damage numbers over your target are switched off. A new setting on the General page (`/whack blizzarddamage off`) keeps them. Turning that setting or the outgoing area off, or logging out, gives you back the game's numbers as you had them.
 - Solo, other players' hits on your target no longer show as yours. When someone else is fighting your target (it is tapped by them, or it attacks another player), Whack only shows the hits it can match to your own swings and spells. Your damage over time still shows when the target is fighting you.
 - A hit that was fully absorbed (a shield, for one) now shows "Absorbed" instead of "-0 (absorbed)". A partly absorbed hit shows how much got through: "Absorbed (-57)".
 

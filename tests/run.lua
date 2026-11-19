@@ -94,6 +94,42 @@ step("solo: unmatched hit (DoT tick) still shows", function()
 	clear()
 end)
 
+step("Blizzard's damage numbers: off while Whack shows outgoing hits, back when it doesn't and at logout", function()
+	local C = MOCK.cvars
+	MOCK.Fire("PLAYER_LOGIN")
+	eq(C.floatingCombatTextCombatDamage, "0", "hidden at login")
+	eq(ns.db.savedFCT, "1", "the player's value kept")
+	-- logout puts it back (Whack might be disabled next time); the next login hides it again
+	MOCK.Fire("PLAYER_LOGOUT")
+	eq(C.floatingCombatTextCombatDamage, "1", "back at logout")
+	MOCK.Fire("PLAYER_LOGIN")
+	eq(C.floatingCombatTextCombatDamage, "0", "hidden again")
+	-- outgoing area off: back; on again: hidden
+	SlashCmdList.WHACK("outgoing.enabled off")
+	eq(C.floatingCombatTextCombatDamage, "1", "outgoing off: Blizzard's numbers back")
+	eq(ns.db.savedFCT, nil, "nothing held")
+	SlashCmdList.WHACK("outgoing.enabled on")
+	eq(C.floatingCombatTextCombatDamage, "0", "outgoing on: hidden")
+	-- the setting off
+	SlashCmdList.WHACK("blizzarddamage off")
+	eq(C.floatingCombatTextCombatDamage, "1", "setting off: back")
+	-- in combat it waits
+	MOCK.combat = true
+	SlashCmdList.WHACK("blizzarddamage on")
+	eq(C.floatingCombatTextCombatDamage, "1", "not changed in combat")
+	MOCK.combat = false
+	MOCK.Fire("PLAYER_REGEN_ENABLED")
+	eq(C.floatingCombatTextCombatDamage, "0", "after combat")
+	-- a player who had it off keeps it off
+	SlashCmdList.WHACK("blizzarddamage off")
+	C.floatingCombatTextCombatDamage = "0"
+	SlashCmdList.WHACK("blizzarddamage on")
+	SlashCmdList.WHACK("blizzarddamage off")
+	eq(C.floatingCombatTextCombatDamage, "0", "their own off stays off")
+	SlashCmdList.WHACK("blizzarddamage on")
+	C.floatingCombatTextCombatDamage = "1"
+end)
+
 step("solo: someone else fighting your target: their hits are not yours", function()
 	advance(5)
 	-- another player is the one your target fights
