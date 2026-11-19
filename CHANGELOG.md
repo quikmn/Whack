@@ -2,7 +2,9 @@
 
 ## Unreleased
 
+- Solo, other players' hits on your target no longer show as yours. When someone else is fighting your target (it is tapped by them, or it attacks another player), Whack only shows the hits it can match to your own swings and spells. Your damage over time still shows when the target is fighting you.
 - A hit that was fully absorbed (a shield, for one) now shows "Absorbed" instead of "-0 (absorbed)". A partly absorbed hit shows how much got through: "Absorbed (-57)".
+
 ## v0.3.0 (2026-11-18)
 
 - Settings: an AI help button copies a description of every setting for an AI assistant, and `/whack apply` runs the commands it gives back.

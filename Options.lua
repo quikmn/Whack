@@ -51,7 +51,7 @@ app:Setting({
 	keywords = { "filter", "group", "only mine", "everything" },
 	get = function() return ns.db.outgoingMode end, default = ns.DEFAULTS.outgoingMode,
 	set = function(v) ns.db.outgoingMode = v end,
-	desc = "The game only tells addons that your target was hit, not by whom. Whack matches hits to your own swings and casts. Solo, everything on your target is shown either way.",
+	desc = "The game only tells addons that your target was hit, not by whom. Whack matches hits to your own swings and casts. Solo, hits it can't match (damage over time, your pet) count as yours unless someone else is fighting your target (tapped by them, or it attacks another player).",
 })
 app:Setting({
 	key = "maxtexts", type = "number", label = "Most texts on screen per area", min = 10, max = 100,
@@ -340,7 +340,7 @@ app:Section("general", "General", function(stack)
 	UI.Header(stack, "General")
 	app:Widget(stack, "mode")
 	app:Widget(stack, "maxtexts")
-	UI.Note(stack, "How it knows what you hit: this client gives addons no combat log, so Whack watches hits on your target and pairs them with your own swings, wand shots and casts. Solo that is exact. In a group, \"Only mine\" drops hits it cannot pair with something you did, which also drops your damage-over-time ticks. Hits on mobs you are not targeting are not shown.")
+	UI.Note(stack, "How it knows what you hit: this client gives addons no combat log, so Whack watches hits on your target and pairs them with your own swings, wand shots and casts. Solo that is exact, unless another player fights your target: then only the hits it can pair with you show. In a group, \"Only mine\" drops hits it cannot pair with something you did, which also drops your damage-over-time ticks. Hits on mobs you are not targeting are not shown.")
 	UI.Header(stack, "Chat commands", "Everything here can also be done from chat.")
 	UI.Note(stack, "/whack  this window\n/whack unlock, /whack lock  move the areas\n/whack test  fake numbers\n/whack notify on, /whack notify test  loot, skill-ups and more\n/whack loot on, /whack rep off, /whack loot.quality uncommon  what it shows\n/whack reset outgoing (incoming, notify)  an area back to its defaults (type it twice)\n/whack status, /whack feedback\n/whack outgoing.fontsize 20  change a setting (/whack get lists them)\n/whack search <words>  find a setting\n/whack help  all of this in chat")
 end)

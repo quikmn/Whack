@@ -238,15 +238,36 @@ end
 local pending = {}
 local flushQueued = false
 
+local function yes(v) return readable(v) and v == true end
+
+-- Is someone else fighting your target? Solo, the game still reports their hits on it. Two signs, both readable
+-- outside instances: the target is tapped by someone else, or it is attacking another player (not you, not your
+-- pet). Unknown (secret) counts as no.
+function C:OthersOnTarget()
+	if UnitIsTapDenied then
+		local ok, denied = pcall(UnitIsTapDenied, "target")
+		if ok and yes(denied) then return true end
+	end
+	if UnitExists and yes(UnitExists("targettarget")) then
+		local me = UnitIsUnit("targettarget", "player")
+		local pet = UnitIsUnit("targettarget", "pet")
+		if readable(me) and readable(pet) and not me and not pet and yes(UnitIsPlayer("targettarget")) then return true end
+	end
+	return false
+end
+
 local function Flush()
 	flushQueued = false
 	local list = pending
 	pending = {}
 	local mode = ns.db.outgoingMode
 	local grouped = IsInGroup and IsInGroup()
+	-- A hit none of your swings or casts explains (a damage-over-time tick, your pet): solo it is yours, unless someone
+	-- else is fighting your target. In a group "Only mine" drops it.
+	local soloMine = not grouped and not C:OthersOnTarget()
 	for _, hit in ipairs(list) do
 		local src = C:Attribute(hit)
-		if src or mode == "all" or not grouped then
+		if src or mode == "all" or soloMine then
 			C:Outgoing(hit, src)
 		end
 	end

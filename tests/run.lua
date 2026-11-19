@@ -94,6 +94,37 @@ step("solo: unmatched hit (DoT tick) still shows", function()
 	clear()
 end)
 
+step("solo: someone else fighting your target: their hits are not yours", function()
+	advance(5)
+	-- another player is the one your target fights
+	MOCK.units.targettarget = { name = "Stranger", class = "WARRIOR" }
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(88), 1)
+	MOCK.RunTimers()
+	eq(active("outgoing"), 0, "another player's hit shown as mine")
+	-- but my own swing still is
+	MOCK.Fire("PLAYER_SWING", 2.0, 0)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(55), 1)
+	MOCK.RunTimers()
+	eq(active("outgoing"), 1, "my matched swing")
+	clear()
+	-- it fights me (or a non-player): an unmatched tick is mine again
+	MOCK.units.targettarget = MOCK.units.player
+	advance(5)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(30), 32)
+	MOCK.RunTimers()
+	eq(active("outgoing"), 1, "my DoT tick while it fights me")
+	clear()
+	-- tapped by someone else
+	MOCK.units.targettarget = nil
+	MOCK.tapDenied = true
+	advance(5)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(30), 32)
+	MOCK.RunTimers()
+	eq(active("outgoing"), 0, "tapped by someone else")
+	MOCK.tapDenied = false
+	clear()
+end)
+
 step("group smart mode: other people's hits are dropped", function()
 	MOCK.SetGroup(5, false)
 	advance(5)

@@ -492,7 +492,8 @@ UnitIsDeadOrGhost = function(u) local d = U(u); return d and d.dead end
 UnitIsDead = UnitIsDeadOrGhost
 UnitIsGhost = function() return false end
 UnitIsAFK = function() return false end
-UnitIsPlayer = function(u) return U(u) ~= nil end
+UnitIsPlayer = function(u) local d = U(u); return d ~= nil and not d.npc end
+UnitIsTapDenied = function(u) return u == "target" and MOCK.tapDenied or false end
 UnitIsUnit = function(a, b) return a == b or (U(a) ~= nil and U(a) == U(b)) end
 UnitInRange = function(u) return S(true), true end
 UnitIsVisible = function(u) return U(u) ~= nil end
