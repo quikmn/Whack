@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 (2026-11-20)
 - Settings window: switches, buttons and sliders use a softer shade of the accent colour, an on switch has a dark knob so it stands out, and boxes have cleaner rounded edges.
 
 - Your hits no longer show twice: while Whack shows your outgoing hits, the game's own damage numbers over your target are switched off. A new setting on the General page (`/whack blizzarddamage off`) keeps them. Turning that setting or the outgoing area off, or logging out, gives you back the game's numbers as you had them.
