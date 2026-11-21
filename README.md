@@ -1,8 +1,6 @@
 # Whack
 
-Scrolling combat text for WoW Forever (interface 16001): your hits and the hits you take, where and how you want them.
-
-Written from scratch. It embeds LibStub (public domain) to load EverlookUI, the settings-window library shared by these addons.
+Scrolling combat text for WoW Forever: your hits and the hits you take, where and how you want them.
 
 ## Use
 - `/whack` opens the options (also under Settings > AddOns).
@@ -11,7 +9,7 @@ Written from scratch. It embeds LibStub (public domain) to load EverlookUI, the 
 - `/whack status` shows what it is doing.
 - `/whack outgoing.fontsize 20` or `/whack set outgoing.fontsize 20` changes a setting from chat (`/whack get` lists them; `/whack outgoing.enabled off` switches an area off).
 - `/whack reset outgoing` (or `incoming`) puts an area back to its defaults: type it twice within 10 seconds.
-- `/whack search <words>` opens the options with the search box filled; `/whack version`; `/whack help` (or `?`) lists every command, and a mistyped one suggests the nearest. They follow the same pattern as every EverlookDB addon.
+- `/whack search <words>` opens the options with the search box filled; `/whack version`; `/whack help` (or `?`) lists every command, and a mistyped one suggests the nearest.
 - `/whack feedback` (or the Feedback button in the options) shows a link for reporting bugs and ideas.
 
 ## Features
