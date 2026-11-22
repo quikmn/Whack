@@ -26,7 +26,8 @@
 -- ButtonRow, TextArea, ScrollPage. Bound widgets take { label, desc, get, set, disabled, after } and have :Refresh().
 -- The mouse wheel scrolls the page: sliders and dropdowns never take it. The page scroll bar is 12 px and draggable.
 --
--- Search: every window has a search box (Ctrl+F; Escape clears it, then closes the window).
+-- Search: every window has a search box (Ctrl+F; Escape clears it, then closes the window). It sits at the top of the
+-- sidebar, or top centre over the page with spec.searchTop = true (EverlookUI 10).
 -- It finds settings (app:Widget), plain toggles, sliders, dropdowns, colour swatches and button rows on any
 -- page, by label, description, page and heading, a dropdown's value and choices, the chat-command name and
 -- optional keywords: app:Setting({ ..., keywords = { "opacity", "alpha" } }) or a widget's/button's opt.keywords.
@@ -34,8 +35,20 @@
 --
 -- AI help (EverlookUI 5): an "AI help" link in the window and "/x ai" copy a description of every setting
 -- for an AI assistant; "/x apply" takes its answer back (see "AI help" below and COMMANDS.md).
+-- An addon with its own settings window hands its settings over with app:ProvideSettings (EverlookUI 11): then chat,
+-- "/x ai" and "/x apply" know them too, and opts.combat = "queue" holds changes made in combat until it ends.
+--
+-- A main window (EverlookUI 13): the same window can hold the addon's own pages next to its settings. A section with
+-- opts.panel = true is a page the addon draws itself (a list, a log, a home page) in an empty frame that fills the
+-- page area; spec.groups = { { id = "main" }, { id = "settings", title = "Settings" } } with opts.group puts the
+-- sidebar rows in groups, each titled group under a small heading; spec.onPage(app, id) hears every page change.
+--
+-- Windows (EverlookUI 14): every window drawn with UI.WindowChrome, and every app's window, is listed in UI.windows
+-- (frame -> info), so a window manager (Everlook Bar's taskbar) can find, minimize and tile them. Nothing else changes
+-- for the window. UI.RegisterWindow(frame, { title = "Name" or fn(frame), icon = ..., noTaskbar = true }) adds to or
+-- changes that; UI.apps lists every app made by this copy or a later one (name, slash, pages for a Start menu).
 local LIB_ADDON = ... -- the folder of the addon whose copy this is (its Media\ sits next to this file)
-local MAJOR, MINOR = "EverlookUI-1", 9
+local MAJOR, MINOR = "EverlookUI-1", 14
 local UI = LibStub:NewLibrary(MAJOR, MINOR)
 if not UI then return end
 UI.version = MINOR
@@ -430,8 +443,49 @@ local function Tooltip(frame, title, body)
 end
 UI.Tooltip = Tooltip
 
+------------------------------------------------------------------------
+-- Windows and apps a window manager can find (EverlookUI 14). The tables survive library upgrades. A window is
+-- listed when it is drawn (UI.WindowChrome) or made by an app; whoever manages windows decides which listed frames
+-- are real windows (shown, movable, big enough) and reads the info:
+--   title      a string, or function(frame) -> string (default: the app's name, the frame's .title text, its name)
+--   icon       an icon name (UI.IconNames), texture path or file ID (default: the app's addon icon)
+--   app        the app the window belongs to
+--   noTaskbar  true: never list it (a toast, a menu, a card)
+-- frame.eluiMinimizing is true while a window manager hides the window to minimize it (it comes back as it was):
+-- an OnHide that clears state can keep it then.
+------------------------------------------------------------------------
+UI.windows = UI.windows or setmetatable({}, { __mode = "k" })
+UI.apps = UI.apps or {}
+UI.windowListeners = UI.windowListeners or {}
+
+function UI.RegisterWindow(frame, info)
+	if type(frame) ~= "table" then return nil end
+	local w = UI.windows[frame]
+	if not w then
+		w = {}
+		UI.windows[frame] = w
+	end
+	if type(info) == "table" then
+		for k, v in pairs(info) do w[k] = v end
+	end
+	for _, fn in ipairs(UI.windowListeners) do pcall(fn, frame, w) end
+	return w
+end
+
+function UI.UnregisterWindow(frame)
+	if type(frame) == "table" then UI.windows[frame] = nil end
+end
+
+function UI.WindowInfo(frame) return type(frame) == "table" and UI.windows[frame] or nil end
+
+-- fn(frame, info) runs for every window listed (or changed) from now on.
+function UI.OnWindowRegistered(fn)
+	if type(fn) == "function" then UI.windowListeners[#UI.windowListeners + 1] = fn end
+end
+
 -- The window look: a rounded slate box with a 1 px rim and a thin accent line along the top.
 local function WindowChrome(f, T)
+	UI.RegisterWindow(f)
 	f.bgFill, f.bgEdge = U.RoundBox(f, 8, T.bg, T.border)
 	local line = U.Solid(f, "ARTWORK", rgba(T.accent))
 	line:SetHeight(2)
@@ -1465,7 +1519,8 @@ end
 
 ------------------------------------------------------------------------
 -- List: rows of data with an optional switch on the left and buttons on the right.
--- opt.items() -> array; opt.title(item); opt.detail(item); opt.icon(item); opt.color(item) (title colour)
+-- opt.items() -> array; opt.title(item); opt.detail(item); opt.icon(item) (a texture, or a line icon name in the
+-- accent colour); opt.color(item) (title colour)
 -- opt.toggle = { get(item), set(item, on) }; opt.buttons = { { label = text or fn(item), width, style,
 -- onClick(item, button), shown(item), usable(item), confirm } }; opt.tooltip(item) (lines or a hook
 -- function(row, item)); opt.onClick(item); opt.empty (text when there are no rows); opt.max (rows shown);
@@ -1559,6 +1614,12 @@ function UI.List(stack, opt)
 			GameTooltip:Hide()
 		end)
 		r:SetScript("OnClick", function(self) if self.item ~= nil and opt.onClick then opt.onClick(self.item) end end)
+		-- opt.drag(item): drag the row (icon or anywhere on it) to put the item on the cursor, e.g. a macro onto an
+		-- action bar (EverlookUI 12). The game doesn't send a click after a drag starts, so onClick still works.
+		if opt.drag then
+			r:RegisterForDrag("LeftButton")
+			r:SetScript("OnDragStart", function(self) if self.item ~= nil then opt.drag(self.item) end end)
+		end
 		f.rows[i] = r
 		return r
 	end
@@ -1583,7 +1644,15 @@ function UI.List(stack, opt)
 			if r.icon then
 				local icon = opt.icon(item)
 				r.icon:SetShown(icon ~= nil)
-				if icon then r.icon:SetTexture(icon) end
+				-- a line icon name ("user", "hammer") in the accent colour (EverlookUI 10), else a texture
+				if icon and UI.IsIconName(icon) then
+					UI.SetIcon(r.icon, icon)
+					r.icon:SetVertexColor(rgba(T.accent))
+				elseif icon then
+					r.icon:SetTexture(icon)
+					r.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+					r.icon:SetVertexColor(1, 1, 1)
+				end
 			end
 			if r.switch then r.switch:SetOn(opt.toggle.get(item) and true or false) end
 			for bi, d in ipairs(opt.buttons or {}) do
@@ -2053,6 +2122,8 @@ local SIDEBAR_W = 196 -- the sidebar of a window with more than one page
 local HEADER_H = 72   -- the page title and description (taller for a long description or a preview)
 local FOOTER_H = 48   -- the footer bar: profile picker on the left, Undo on the right
 local MIN_H = 420
+local TOPBAR_H = 44   -- spec.searchTop: the bar over the page that holds the search box, top centre
+local TOPSEARCH_W = 300
 UI.SIDEBAR_W, UI.FOOTER_H = SIDEBAR_W, FOOTER_H
 
 -- The window width. EverlookUI 6 windows were 780 (sidebar) or 600 px wide by default and addons sized their pages
@@ -2072,7 +2143,7 @@ end
 -- spec: name, addon (folder name), version (else the TOC's), tagline, slash ("/whack"), aliases ({ "/whackit" }: more
 -- slash words, kept working and named in help), shortSettings (false: settings only as "/x set <setting> <value>"),
 -- chatSearch (false: help doesn't offer "/x search <words>"), windowDesc (what a bare /x opens, for help),
--- accent { r, g, b },
+-- accent { r, g, b }, searchTop (true: the search box top centre over the page instead of in the sidebar),
 -- frameName (prefix for global frame names; default name without spaces), width, height,
 -- position (function returning the table the window position is saved in, as .window),
 -- buttons ({ { label, onClick(app, button), text = fn() -> label } } shown under the sidebar or along the bottom),
@@ -2088,6 +2159,7 @@ function UI:NewApp(spec)
 	app.settings, app.settingOrder = {}, {}
 	app.commands, app.commandOrder = {}, {}
 	if spec.settingsPanel ~= false then app:RegisterSettingsPanel() end
+	UI.apps[#UI.apps + 1] = app
 	return app
 end
 
@@ -2120,7 +2192,92 @@ function App:Setting(def)
 	return def
 end
 
-function App:GetSetting(key) return key and self.settings[tostring(key):lower()] end
+function App:GetSetting(key)
+	if not key then return nil end
+	local k = tostring(key):lower()
+	local def = self.settings[k]
+	if def or not self.providerFn then return def end
+	local _, map = self:ProvidedSettings()
+	return map[k]
+end
+
+------------------------------------------------------------------------
+-- Settings from the addon's own window (EverlookUI 11). An addon that draws its own settings window (Lattice) and
+-- registers no app:Setting can still have "/x <setting> <value>", "/x get", "/x ai" and "/x apply":
+--   app:ProvideSettings(fn, opts)
+-- fn(app) returns the settings as groups, { { title = "Layout » Frame size", defs = { def, ... } }, ... }, or as one
+-- flat list of defs (each may name its group in def.group). A def is in the app:Setting format: key, type, label,
+-- desc, get, set, and min/max/step, choices, hasAlpha, disabled, after, default, keywords, chatLabel as fits, plus
+--   def.validate(value, text) -> ok, why   checked after the value is read, for every type (the AI's answer is
+--                                         pasted text: anything it doesn't allow is refused, with why)
+--   def.combat = "queue"                   a change made in combat waits until combat ends (checked again then)
+-- opts.combat = "queue" does that for every provided setting (secure frames: party and raid frames).
+-- fn is called again each time (current values, pages built later); a def without key, type, get or set, or of
+-- an unknown type, is left out, and a key the registry already has keeps the registry's def. A provider that
+-- fails is reported to the error handler and gives no settings. Nothing here changes apps that don't call it.
+------------------------------------------------------------------------
+local SETTING_TYPES = { bool = true, number = true, choice = true, color = true, string = true }
+
+function App:ProvideSettings(fn, opts)
+	assert(type(fn) == "function", "ProvideSettings needs a function")
+	self.providerFn, self.providerOpts = fn, opts or {}
+end
+
+-- The provided settings: groups ({ title, defs }), key -> def (lower case), and all of them in order.
+function App:ProvidedSettings()
+	local groups, map, list = {}, {}, {}
+	if not self.providerFn then return groups, map, list end
+	local ok, res = pcall(self.providerFn, self)
+	if not ok then
+		local handler = geterrorhandler and geterrorhandler()
+		if handler then handler(res) end
+		return groups, map, list
+	end
+	if type(res) ~= "table" then return groups, map, list end
+	local combat = self.providerOpts and self.providerOpts.combat
+	local byTitle = {}
+	local function take(def, title)
+		if type(def) ~= "table" or type(def.key) ~= "string" or not def.key:find("^[%w_%.%-]+$") or not SETTING_TYPES[def.type]
+			or type(def.get) ~= "function" or type(def.set) ~= "function" then return end
+		if def.type == "number" and not (tonumber(def.min) and tonumber(def.max)) then return end
+		if def.type == "choice" and type(def.choices) ~= "table" then return end
+		local k = def.key:lower()
+		if self.settings[k] or map[k] then return end
+		if def.combat == nil then def.combat = combat end
+		def.label = def.label or def.key
+		map[k] = def
+		list[#list + 1] = def
+		title = title or def.group or "Settings"
+		local g = byTitle[title]
+		if not g then
+			g = { title = title, defs = {} }
+			byTitle[title] = g
+			groups[#groups + 1] = g
+		end
+		g.defs[#g.defs + 1] = def
+	end
+	for _, item in ipairs(res) do
+		if type(item) == "table" and type(item.defs) == "table" then
+			for _, def in ipairs(item.defs) do take(def, item.title and tostring(item.title)) end
+		else
+			take(item)
+		end
+	end
+	return groups, map, list
+end
+
+-- Every setting: the registry's, then the provided ones.
+function App:AllSettings()
+	if not self.providerFn then return self.settingOrder end
+	local all = {}
+	for _, def in ipairs(self.settingOrder) do all[#all + 1] = def end
+	local _, _, list = self:ProvidedSettings()
+	for _, def in ipairs(list) do all[#all + 1] = def end
+	return all
+end
+
+-- Has it settings to change from chat or AI help? (Doesn't call the provider.)
+function App:HasSettings() return #self.settingOrder > 0 or self.providerFn ~= nil end
 
 local BOOL_WORDS = {
 	on = true, ["true"] = true, yes = true, ["1"] = true, enable = true, enabled = true, show = true,
@@ -2172,8 +2329,8 @@ function App:Accepts(def)
 	return "any text"
 end
 
--- Parse `text` for `def`. Returns ok, value or false, reason.
-function App:Parse(def, text)
+-- Read `text` as a value for `def` (its type's rules, and a text setting's validator). Returns ok, value or false, reason.
+function App:ParseValue(def, text)
 	text = U.Trim(text)
 	if def.type == "bool" then
 		local w = text:lower()
@@ -2218,18 +2375,124 @@ function App:Parse(def, text)
 		end
 		return false, "needs " .. self:Accepts(def)
 	end
-	if def.validate then
-		local ok, why = def.validate(text)
-		if not ok then return false, why end
-	end
-	return true, text
+	return self:Validate(def, text, text)
 end
 
--- Apply a value the same way the window does, then refresh the window.
-function App:Apply(def, v)
-	def.set(v)
-	if def.after then def.after(v) end
+-- def.validate(value, text) after the value is read (for text settings, value is the text). EverlookUI 11: every
+-- type, not only text. A validator that errors counts as a refusal.
+function App:Validate(def, v, text)
+	if def.validate then
+		local okCall, ok, why = pcall(def.validate, v, text)
+		if not okCall then return false, "not allowed" end
+		if not ok then return false, why and tostring(why) or "not allowed" end
+	end
+	return true, v
+end
+
+-- Parse `text` for `def`, then its validator (text settings ran it already). Returns ok, value or false, reason.
+function App:Parse(def, text)
+	local ok, v = self:ParseValue(def, text)
+	if not ok or def.type == "string" or not SETTING_TYPES[def.type] then return ok, v end
+	return self:Validate(def, v, U.Trim(text))
+end
+
+------------------------------------------------------------------------
+-- Changes in combat (EverlookUI 11): a def with combat = "queue" (or every provided setting, with
+-- app:ProvideSettings(fn, { combat = "queue" })) isn't set during combat lockdown. The change waits, and when combat
+-- ends the newest value for each setting is checked again and set, and chat says how many were applied.
+------------------------------------------------------------------------
+function App:Waits(def)
+	return def.combat == "queue" and InCombatLockdown ~= nil and InCombatLockdown() and true or false
+end
+
+local function setNow(def, v, prepare)
+	local undo = prepare and prepare()
+	local ok, e = pcall(function()
+		def.set(v)
+		if def.after then def.after(v) end
+	end)
+	if type(undo) == "function" then undo() end
+	if not ok then error(e, 0) end
+end
+
+-- Hold a change until combat ends (a later change to the same setting replaces it).
+function App:QueueChange(def, v, prepare, key)
+	local q = self.combatQueue
+	if not q then
+		q = { order = {}, byKey = {} }
+		self.combatQueue = q
+	end
+	key = tostring(key or def.key):lower()
+	local entry = q.byKey[key]
+	if not entry then
+		entry = { key = key }
+		q.byKey[key] = entry
+		q.order[#q.order + 1] = entry
+	end
+	entry.def, entry.value, entry.prepare = def, v, prepare
+	if not self.queueFrame then
+		local f = CreateFrame("Frame")
+		f:RegisterEvent("PLAYER_REGEN_ENABLED")
+		local app = self
+		f:SetScript("OnEvent", function() app:RunQueued() end)
+		self.queueFrame = f
+	end
+end
+
+function App:QueuedCount() return self.combatQueue and #self.combatQueue.order or 0 end
+
+-- Combat is over: set what waited. Each value is checked again (range, choices, validator) first.
+function App:RunQueued()
+	local q = self.combatQueue
+	if not q or #q.order == 0 or (InCombatLockdown and InCombatLockdown()) then return 0 end
+	self.combatQueue = nil
+	local done = 0
+	for _, e in ipairs(q.order) do
+		-- the setting as it is now (a provider makes its defs afresh; a key that is gone is dropped)
+		local def, prepare = self:ResolveSetting(e.key)
+		if type(def) ~= "table" then def, prepare = nil, nil end
+		local v = e.value
+		local ok = def ~= nil
+		if not ok then
+		elseif def.type == "number" then
+			ok = type(v) == "number" and v >= def.min - 1e-9 and v <= def.max + 1e-9
+		elseif def.type == "choice" then
+			ok = false
+			for _, c in ipairs(def.choices or {}) do if c.value == v then ok = true break end end
+		end
+		if ok then ok = (self:Validate(def, v, nil)) end
+		if ok then
+			local okSet, err = pcall(setNow, def, v, type(prepare) == "function" and prepare or nil)
+			if okSet then
+				done = done + 1
+			else
+				local handler = geterrorhandler and geterrorhandler()
+				if handler then handler(err) end
+			end
+		end
+	end
 	self:Refresh()
+	if done > 0 then
+		self:Print(("combat is over: %d change%s that waited %s applied."):format(done, done == 1 and "" or "s", done == 1 and "is" or "are"))
+	end
+	return done
+end
+
+-- Set a value the way the window does (after combat, for a def that waits). Returns "set" or "queued".
+function App:SetValue(def, v, prepare, key)
+	if self:Waits(def) then
+		self:QueueChange(def, v, prepare, key)
+		return "queued"
+	end
+	setNow(def, v, prepare)
+	return "set"
+end
+
+-- Apply a value the same way the window does, then refresh the window. Returns "set" or "queued".
+function App:Apply(def, v)
+	local how = self:SetValue(def, v)
+	self:Refresh()
+	return how
 end
 
 -- How a setting is set from chat: "/x <setting> <value>", or "/x set <setting> <value>" for an addon whose bare
@@ -2251,7 +2514,10 @@ function App:SetFromText(def, text)
 		self:Print("|cffff6060" .. label .. ": " .. U.Escape(v) .. ".|r Example: " .. U.Escape(usage))
 		return false
 	end
-	self:Apply(def, v)
+	if self:Apply(def, v) == "queued" then
+		self:Print(label .. ": " .. self:FormatValue(def, v) .. " when combat ends.")
+		return true
+	end
 	self:Print(label .. ": " .. self:FormatValue(def, def.get()))
 	return true
 end
@@ -2279,9 +2545,10 @@ function App:TrySetting(msg)
 end
 
 function App:PrintSettings()
-	if #self.settingOrder == 0 then self:Print("no settings to change from chat. " .. U.Escape(self.slash) .. " opens the window.") return end
+	local all = self:AllSettings()
+	if #all == 0 then self:Print("no settings to change from chat. " .. U.Escape(self.slash) .. " opens the window.") return end
 	self:Print("settings (" .. U.Escape(self:SetPrefix()) .. "<setting> <value>):")
-	for _, def in ipairs(self.settingOrder) do
+	for _, def in ipairs(all) do
 		DEFAULT_CHAT_FRAME:AddMessage("  " .. self:ColorCode() .. def.key .. "|r = " .. self:FormatValue(def, def.get())
 			.. "  |cff8d94a3" .. (def.chatLabel or def.label) .. " (" .. self:Accepts(def) .. ")|r")
 	end
@@ -2366,7 +2633,7 @@ function App:Verbs()
 	if self.movable then v[#v + 1] = "lock"; v[#v + 1] = "unlock" end
 	if self.resetOrder and #self.resetOrder > 0 then v[#v + 1] = "reset" end
 	if self.spec.feedbackURL then v[#v + 1] = "feedback" end
-	if #self.settingOrder > 0 then v[#v + 1] = "ai"; v[#v + 1] = "apply" end
+	if self:HasSettings() then v[#v + 1] = "ai"; v[#v + 1] = "apply" end
 	return v
 end
 
@@ -2389,8 +2656,8 @@ function App:Help()
 		local one = #self.resetOrder == 1 and self.resetOrder[1]
 		line(s .. " " .. resetUsage(self), "back to defaults" .. (one and (": " .. one.what) or "") .. " (asks first)")
 	end
-	if #self.settingOrder > 0 then
-		local d = self.settingOrder[1]
+	local d = self:HasSettings() and self:AllSettings()[1]
+	if d then
 		local p = self:SetPrefix()
 		line(p .. "<setting> <value>", "change a setting, e.g. " .. U.Escape(p .. d.key .. " " .. self:Example(d))
 			.. "; several on one line: " .. U.Escape(s .. " set <setting> <value> ; <setting> <value>"))
@@ -2495,11 +2762,12 @@ function App:Suggest(word)
 		end
 	end
 	for _, v in ipairs(self:Verbs()) do add(v) end
-	for _, def in ipairs(self.settingOrder) do add(def.key) end
+	local all = self:AllSettings()
+	for _, def in ipairs(all) do add(def.key) end
 	local near = UI.Nearest(word, words)
-	if near then return near, self.settings[near] ~= nil end
+	if near then return near, self:GetSetting(near) ~= nil end
 	local entries = {}
-	for _, def in ipairs(self.settingOrder) do
+	for _, def in ipairs(all) do
 		entries[#entries + 1] = Search.Entry({ label = def.label, chatLabel = def.chatLabel, key = def.key, keywords = def.keywords, desc = def.desc, def = def })
 	end
 	local found = Search.Match(entries, word)
@@ -2606,12 +2874,12 @@ UI.Verbs = {
 		return "feedback"
 	end,
 	ai = function(app)
-		if #app.settingOrder == 0 then return nil end
+		if not app:HasSettings() then return nil end
 		app:ShowAiHelp()
 		return "ai"
 	end,
 	apply = function(app, rest)
-		if #app.settingOrder == 0 then return nil end
+		if not app:HasSettings() then return nil end
 		app:ShowApply(rest ~= "" and rest or nil)
 		return "apply"
 	end,
@@ -2660,11 +2928,45 @@ end
 -- opts (EverlookUI 7): icon (a name from UI.IconNames such as "gear", or any texture path or file ID; default from the
 -- title, UI.PageIcon) and desc (the line under the page title; default: the sub-line of the page's first heading
 -- when that heading repeats the page title).
+-- EverlookUI 13: opts.group (the sidebar group, from spec.groups; default the last group) and opts.panel = true: a page
+-- of the addon's own instead of a card stack. build(holder, app, section) then gets an empty frame filling the page
+-- area under the top bar (no page header, no footer bar), once; opts.show(holder, app, section) runs each time the
+-- page shows and opts.hide(holder, app, section) when another page (or the search's results) takes its place. A panel
+-- page has no settings to search; the search box still searches every settings page.
 function App:Section(id, title, build, opts)
 	assert(not self.sections[id], "duplicate section " .. id)
-	self.sections[id] = { id = id, title = title, build = build }
+	local s = { id = id, title = title, build = build }
+	if type(opts) == "table" then
+		s.group, s.panel, s.show, s.hide = opts.group, opts.panel and true or nil, opts.show, opts.hide
+	end
+	self.sections[id] = s
 	self.order[#self.order + 1] = id
 	if opts then self:SectionInfo(id, opts) end
+end
+
+-- The pages in sidebar order: group by group (spec.groups), in the order they were added within a group.
+function App:NavOrder()
+	local groups = self.spec.groups
+	if type(groups) ~= "table" or #groups == 0 then return self.order end
+	local rank, fallback = {}, groups[#groups].id
+	for i, g in ipairs(groups) do rank[g.id] = i end
+	local out, pos = {}, {}
+	for i, id in ipairs(self.order) do out[i] = id; pos[id] = i end
+	local function groupOf(id) local g = self.sections[id].group; return rank[g] and g or fallback end
+	table.sort(out, function(a, b)
+		local ga, gb = rank[groupOf(a)], rank[groupOf(b)]
+		if ga ~= gb then return ga < gb end
+		return pos[a] < pos[b]
+	end)
+	return out
+end
+
+-- The group a page is listed under (nil without spec.groups).
+function App:GroupOf(id)
+	local groups, s = self.spec.groups, self.sections[id]
+	if type(groups) ~= "table" or #groups == 0 or not s then return nil end
+	for _, g in ipairs(groups) do if g.id == s.group then return g end end
+	return groups[#groups]
 end
 
 -- Change a page's icon, description or title later: app:SectionInfo("general", { icon = "gear", desc = "..." }).
@@ -2741,7 +3043,7 @@ end
 -- Build a page's widgets, hidden (ShowSection shows it; the search reads it).
 function App:BuildSection(id)
 	local f, s = self.window, self.sections[id]
-	if not f or not s or s.scroll then return s end
+	if not f or not s or s.scroll or s.panel then return s end
 	s.scroll = UI.ScrollPage(f.content)
 	s.scroll:Hide()
 	local width = f.contentWidth - 24 -- the scroll bar takes the right edge
@@ -2767,7 +3069,7 @@ function App:EnsureSearchIndex(one)
 	if not self.window then return false end
 	for _, id in ipairs(self.order) do
 		local s = self.sections[id]
-		if not s.scroll and not s.searchFailed then
+		if not s.scroll and not s.searchFailed and not s.panel then
 			local ok, err = pcall(self.BuildSection, self, id)
 			if not ok then
 				DropSection(self, s)
@@ -2845,6 +3147,8 @@ function App:Search(text)
 		self.searching = true
 		ClosePopup()
 		for _, s in pairs(self.sections) do if s.scroll then s.scroll:Hide() end end
+		self:HidePanels()
+		self:PanelChrome(false)
 	end
 	local entries = self:SearchEntries()
 	self.searchQuery = q
@@ -2931,8 +3235,9 @@ function App:ShowResults(results, q, entries)
 	R.UpdateBar()
 end
 
--- End the search: the controls go back and the page you were on shows again.
-function App:StopSearch()
+-- End the search: the controls go back and the page you were on shows again (not with `leaving`: another page is
+-- about to show).
+function App:StopSearch(leaving)
 	local f = self.window
 	if f and f.searchBox and f.searchBox:GetText() ~= "" then f.searchBox:SetText("") end
 	if not self.searching then return end
@@ -2941,6 +3246,10 @@ function App:StopSearch()
 	ClosePopup()
 	f.results:Hide()
 	local s = self.current and self.sections[self.current]
+	if s and s.panel then
+		if not leaving then self:ShowSection(s.id) end
+		return
+	end
 	if s and s.scroll then
 		s.stack:RefreshAll()
 		s.scroll:Show()
@@ -3246,7 +3555,7 @@ function App:MakeTools(parent)
 		f.footer[#f.footer + 1] = b
 		tools[#tools + 1] = b
 	end
-	if #self.settingOrder > 0 then
+	if self:HasSettings() then
 		local d = { label = "AI help", icon = "ai" }
 		local b = ToolLink(parent, T, d, function() app:ShowAiHelp() end)
 		Tooltip(b, "Get help from AI to configure this addon",
@@ -3266,6 +3575,7 @@ end
 
 function App:CreateWindow()
 	local app, T, spec = self, self.T, self.spec
+	self.order = self:NavOrder()
 	local sidebar = #self.order > 1
 	local W = WindowWidth(spec, sidebar)
 	local H = (spec.height or 560) + 40 -- room for the footer bar
@@ -3290,6 +3600,7 @@ function App:CreateWindow()
 	f:Hide()
 	self.window = f
 	RestorePosition(self, f)
+	UI.RegisterWindow(f, { app = self })
 	W = math.floor((f:GetWidth() or W) + 0.5) -- a size the player gave it last time
 	WindowChrome(f, T)
 
@@ -3348,18 +3659,45 @@ function App:CreateWindow()
 		end
 		local headBottom = math.max(18 + 30, 17 + math.ceil(logo:GetStringHeight() or 16) + 3 + 12)
 
-		-- the search box under it
-		local box = self:CreateSearch(f, SIDEBAR_W - 24, side)
-		box:SetPoint("TOPLEFT", f, "TOPLEFT", 13, -(headBottom + 14))
-		local navTop = headBottom + 14 + 26 + 14
+		-- the search box under it, or top centre over the page (spec.searchTop)
+		local navTop
+		if spec.searchTop then
+			local topBar = CreateFrame("Frame", nil, f)
+			topBar:SetPoint("TOPLEFT", f, "TOPLEFT", SIDEBAR_W + 1, 0)
+			topBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+			topBar:SetHeight(TOPBAR_H)
+			local box = self:CreateSearch(f, TOPSEARCH_W, topBar)
+			box:SetPoint("TOP", topBar, "TOP", 0, -14)
+			f.topBar = topBar
+			f.headerOffset = TOPBAR_H
+			navTop = headBottom + 18
+		else
+			local box = self:CreateSearch(f, SIDEBAR_W - 24, side)
+			box:SetPoint("TOPLEFT", f, "TOPLEFT", 13, -(headBottom + 14))
+			navTop = headBottom + 14 + 26 + 14
+		end
 
-		-- the pages
-		f.navButtons = {}
+		-- the pages, group by group; a titled group under a small heading (EverlookUI 13)
+		f.navButtons, f.navHeads = {}, {}
+		local y, lastGroup = navTop, nil
 		for i, id in ipairs(self.order) do
 			local s = self.sections[id]
+			local g = self:GroupOf(id)
+			if g ~= lastGroup then
+				if g and g.title then
+					if i > 1 then y = y + 8 end
+					local head = Text(side, T.fontSmall, T.muted)
+					head:SetPoint("TOPLEFT", 18, -y - 4)
+					head:SetText(tostring(g.title):upper())
+					f.navHeads[#f.navHeads + 1] = head
+					y = y + 22
+				end
+				lastGroup = g
+			end
 			local b = CreateFrame("Button", nil, side)
 			b:SetHeight(30)
-			b:SetPoint("TOPLEFT", 8, -navTop - (i - 1) * 32)
+			b:SetPoint("TOPLEFT", 8, -y)
+			y = y + 32
 			b:SetPoint("RIGHT", -8, 0)
 			b.hover = U.Round(b, 5, "BACKGROUND")
 			b.hover:SetAllPoints(b)
@@ -3410,14 +3748,20 @@ function App:CreateWindow()
 		line:SetHeight(1)
 		line:SetPoint("BOTTOMLEFT", 14, 30 + #tools * 26 + 6)
 		line:SetPoint("RIGHT", side, "RIGHT", -14, 0)
+		-- tall enough that the last page never runs into the tools (EverlookUI 14): grow, and never resize smaller
+		local need = math.ceil(y + 14 + 30 + #tools * 26 + 6 + 8)
+		if need > MIN_H then
+			if f.SetResizeBounds then f:SetResizeBounds(W, need) elseif f.SetMinResize then f:SetMinResize(W, need) end
+		end
+		if (f:GetHeight() or 0) < need then f:SetHeight(need) end
 
 		-- the page header
 		f.pageTitle = Text(f, T.fontHuge, T.text)
-		f.pageTitle:SetPoint("TOPLEFT", CL, -20)
+		f.pageTitle:SetPoint("TOPLEFT", CL, -(20 + (f.headerOffset or 0)))
 		f.pageTitle:SetWordWrap(false)
 		f.pageDesc = Text(f, T.fontSmall + 1, T.muted)
 		f.pageDesc:SetPoint("TOPLEFT", f.pageTitle, "BOTTOMLEFT", 0, -6)
-		top = HEADER_H
+		top = HEADER_H + (f.headerOffset or 0)
 	else
 		-- one page: icon, name and "v1.0 · /cmd" in a title row, the search box on its right, the tagline under it
 		local icon = self:MakeAppIcon(f, 28)
@@ -3460,6 +3804,13 @@ function App:CreateWindow()
 
 	content:SetPoint("TOPLEFT", CL, -top)
 	content:SetPoint("BOTTOMRIGHT", -16, FOOTER_H + 8)
+
+	-- the area of a panel page (EverlookUI 13): everything right of the sidebar under the top bar
+	local panelArea = CreateFrame("Frame", nil, f)
+	panelArea:SetPoint("TOPLEFT", f, "TOPLEFT", sidebar and (SIDEBAR_W + 1) or 1, -(f.headerOffset or (sidebar and 0 or top)))
+	panelArea:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+	panelArea:Hide()
+	f.panelArea = panelArea
 
 	-- the footer bar: profile picker (or the addon's own control) and, in a one-page window, the tools on the
 	-- left; Undo on the right
@@ -3517,6 +3868,7 @@ function App:CreateWindow()
 		SavePosition(app, f)
 	end)
 	f.resizeGrip = grip
+	grip:SetFrameLevel((f:GetFrameLevel() or 1) + 60) -- above a panel page's own frames
 	f:SetScript("OnSizeChanged", function(_, w) app:OnWindowSized(w) end)
 
 	-- Ctrl+Z is Undo (Ctrl+F, set by CreateSearch, focuses the search box)
@@ -3536,8 +3888,10 @@ function App:CreateWindow()
 	f:SetScript("OnHide", function()
 		ClosePopup()
 		f.searchBox:ClearFocus()
-		app:StopSearch()
-		app.history = nil -- Undo covers one visit of the window
+		if not f.eluiMinimizing then -- minimized (EverlookUI 14): it comes back with its search and Undo
+			app:StopSearch()
+			app.history = nil -- Undo covers one visit of the window
+		end
 		if spec.onHide then spec.onHide(app) end
 	end)
 	UI.CloseOnEscape(f)
@@ -3664,6 +4018,7 @@ function App:UpdatePageHeader()
 	if not f or not f.pageTitle then return end
 	local s = self.current and self.sections[self.current]
 	for _, d in pairs(self.previews or {}) do if d.frame then d.frame:Hide() end end
+	if s and s.panel and not self.searching then return end
 	local def = s and self:PreviewFor(s.id)
 	local pw, ph = 0, 0
 	if def then
@@ -3680,7 +4035,7 @@ function App:UpdatePageHeader()
 		end
 		pw, ph = def.frame:GetWidth() or 0, def.frame:GetHeight() or 0
 		def.frame:ClearAllPoints()
-		def.frame:SetPoint("TOPRIGHT", f, "TOPRIGHT", -44, -14)
+		def.frame:SetPoint("TOPRIGHT", f, "TOPRIGHT", -44, -(14 + (f.headerOffset or 0)))
 		def.frame:Show()
 		self:RefreshPreview()
 	end
@@ -3690,8 +4045,9 @@ function App:UpdatePageHeader()
 	f.pageTitle:SetText(s and s.title or "")
 	f.pageDesc:SetText(s and s.desc or "")
 	f.pageDesc:SetShown(s ~= nil and s.desc ~= nil and s.desc ~= "")
-	local textH = 20 + 22 + ((s and s.desc and s.desc ~= "") and (6 + math.ceil(f.pageDesc:GetStringHeight() or 12)) or 0) + 14
-	local top = math.max(HEADER_H, textH, ph > 0 and (14 + ph + 14) or 0)
+	local off = f.headerOffset or 0
+	local textH = off + 20 + 22 + ((s and s.desc and s.desc ~= "") and (6 + math.ceil(f.pageDesc:GetStringHeight() or 12)) or 0) + 14
+	local top = math.max(HEADER_H + off, textH, ph > 0 and (off + 14 + ph + 14) or 0)
 	if top ~= f.headerTop then
 		f.headerTop = top
 		f.content:ClearAllPoints()
@@ -3782,31 +4138,78 @@ function App:PaintNav()
 	end
 end
 
+-- A panel page's frame hides (its hide callback runs) unless it is `keep`'s.
+function App:HidePanels(keep)
+	for sid, other in pairs(self.sections) do
+		if other.holder and sid ~= keep and other.holder:IsShown() then
+			other.holder:Hide()
+			if other.hide then
+				local ok, err = pcall(other.hide, other.holder, self, other)
+				if not ok then report(err) end
+			end
+		end
+	end
+end
+
+-- Over a panel page: no page header, no footer bar, the panel area instead of the card pages.
+function App:PanelChrome(panel)
+	local f = self.window
+	if not f then return end
+	if f.pageTitle then f.pageTitle:SetShown(not panel) end
+	if f.pageDesc and panel then f.pageDesc:Hide() end
+	if f.footerBar then f.footerBar:SetShown(not panel) end
+	if f.content then f.content:SetShown(not panel) end
+	if f.panelArea then f.panelArea:SetShown(panel) end
+end
+
 function App:ShowSection(id)
 	local f = self.window
 	if not f then return end
 	local s = self.sections[id]
 	if not s then return end
 	ClosePopup()
-	if self.searching then self:StopSearch() end -- a page picked in the sidebar ends the search
+	if self.searching then self:StopSearch(true) end -- a page picked in the sidebar ends the search
 	for sid, other in pairs(self.sections) do
 		if other.scroll then other.scroll:SetShown(sid == id) end
 	end
+	self:HidePanels(id)
 	self.current = id
 	self:PaintNav()
-	if not s.scroll then
-		self:BuildSection(id)
+	if s.panel then
+		self:PanelChrome(true)
+		for _, d in pairs(self.previews or {}) do if d.frame then d.frame:Hide() end end
+		if not s.holder then
+			s.holder = CreateFrame("Frame", nil, f.panelArea)
+			s.holder:SetAllPoints(f.panelArea)
+			s.holder.eluiTheme = self.T
+			local ok, err = pcall(s.build, s.holder, self, s)
+			if not ok then report(err) end
+		end
+		s.holder:Show()
+		if s.show then
+			local ok, err = pcall(s.show, s.holder, self, s)
+			if not ok then report(err) end
+		end
 	else
-		s.stack:RefreshAll()
+		self:PanelChrome(false)
+		if not s.scroll then
+			self:BuildSection(id)
+		else
+			s.stack:RefreshAll()
+		end
+		self:UpdatePageHeader()
+		s.scroll:Show()
 	end
-	self:UpdatePageHeader()
-	s.scroll:Show()
+	if self.spec.onPage then
+		local ok, err = pcall(self.spec.onPage, self, id)
+		if not ok then report(err) end
+	end
 end
 
 -- Build a section again from scratch (its rows depend on data).
 function App:RebuildSection(id)
 	local s = self.sections[id]
-	if not s or not s.scroll then return end
+	if not s or not s.scroll or s.panel then return end
 	if self.searching then self:ReturnBorrowed() end
 	DropSection(self, s)
 	if self.searching then
@@ -3862,6 +4265,7 @@ end
 --   def.default    a setting's default, a value or a function (shown to the AI when given)
 --   app:AiExtra(function(app) return "text" end)   more context after the settings (bars, placed plugins...)
 --   app:ResolveSetting(word)                        keys beyond the registry (see "Chat commands")
+--   app:ProvideSettings(fn, opts)                   an addon's own window's settings (EverlookUI 11, see "Settings")
 -- The text is built from the live registry (app:AiText()), so it is always complete and current; settings are
 -- grouped by page and heading as in the window (from the search index), the rest under "More settings".
 ------------------------------------------------------------------------
@@ -3993,7 +4397,10 @@ function App:AiGroups()
 	end
 	local rest = {}
 	for _, def in ipairs(self.settingOrder) do if not placed[def] then rest[#rest + 1] = def end end
-	if #rest > 0 then groups[#groups + 1] = { title = #groups > 0 and "More settings" or "Settings", defs = rest, loose = true } end
+	-- an addon's own window's settings (app:ProvideSettings), grouped as the addon says
+	local provided = self.providerFn and (self:ProvidedSettings()) or {}
+	if #rest > 0 then groups[#groups + 1] = { title = (#groups > 0 or #provided > 0) and "More settings" or "Settings", defs = rest, loose = true } end
+	for _, g in ipairs(provided) do groups[#groups + 1] = g end
 	return groups
 end
 
@@ -4207,32 +4614,32 @@ function App:PreviewLine(r)
 	local name = plain(r.label) .. (r.key and (" (" .. r.key .. ")") or "")
 	if r.kind == "get" then return name .. ": " .. show(r.old) .. " (only shown)", T.muted end
 	if r.same then return name .. ": already " .. show(r.value), T.muted end
-	return name .. ": " .. show(r.old) .. " -> " .. show(r.value), T.text
+	local wait = r.kind == "set" and r.def and self:Waits(r.def) and "  (when combat ends)" or ""
+	return name .. ": " .. show(r.old) .. " -> " .. show(r.value) .. wait, T.text
 end
 
 -- Apply the rows of PlanApply: setting changes, on/off and lock. Returns changed, skipped (problem lines).
+-- A change to a setting that waits for the end of combat (def.combat = "queue") is held and counted as queued.
 function App:RunPlan(rows)
-	local changed, skipped = 0, 0
+	local changed, skipped, queued = 0, 0, 0
 	for _, r in ipairs(rows) do
 		if r.err then
 			skipped = skipped + 1
 		elseif r.kind ~= "get" and not r.same then
+			local how
 			local ok, err = pcall(function()
 				if r.kind == "set" then
-					local undo = r.prepare and r.prepare()
-					local okSet, e = pcall(function()
-						r.def.set(r.value)
-						if r.def.after then r.def.after(r.value) end
-					end)
-					if type(undo) == "function" then undo() end
-					if not okSet then error(e, 0) end
+					how = self:SetValue(r.def, r.value, r.prepare, r.key)
 				elseif r.kind == "onoff" then
 					self.onOff.set(r.value)
 				elseif r.kind == "lock" then
 					self.movable.set(r.value)
 				end
 			end)
-			if ok then
+			if ok and how == "queued" then
+				queued = queued + 1
+				r.queued = true
+			elseif ok then
 				changed = changed + 1
 			else
 				skipped = skipped + 1
@@ -4243,18 +4650,20 @@ function App:RunPlan(rows)
 		end
 	end
 	self:Refresh()
-	return changed, skipped
+	return changed, skipped, queued
 end
 
--- Plan and apply `text`; prints and returns "Changed 5 settings, 1 line skipped."
+-- Plan and apply `text`; prints and returns "Changed 5 settings, 1 line skipped." (In combat, for settings that
+-- wait: "Changed 0 settings, 3 apply when combat ends.") Returns changed, skipped, rows, msg, queued.
 function App:ApplyText(text)
 	local rows = self:PlanApply(text)
-	local changed, skipped = self:RunPlan(rows)
+	local changed, skipped, queued = self:RunPlan(rows)
 	local msg = ("Changed %d setting%s"):format(changed, changed == 1 and "" or "s")
+	if queued > 0 then msg = msg .. (", %d appl%s when combat ends"):format(queued, queued == 1 and "ies" or "y") end
 	if skipped > 0 then msg = msg .. (", %d line%s skipped"):format(skipped, skipped == 1 and "" or "s") end
 	msg = msg .. "."
 	self:Print(msg)
-	return changed, skipped, rows, msg
+	return changed, skipped, rows, msg, queued
 end
 
 -- A small movable window in the settings window's look. onShow(f) runs when it opens.
@@ -4411,11 +4820,16 @@ function App:ShowApply(text)
 		function f.Preview(result)
 			updateHint()
 			local rows = app:PlanApply(box:GetText() or "")
-			local lines, changes, problems = {}, 0, 0
+			local lines, changes, problems, waits = {}, 0, 0, 0
 			for _, r in ipairs(rows) do
 				local l, c = app:PreviewLine(r)
 				lines[#lines + 1] = "|cff" .. hex(c) .. U.Escape(l) .. "|r"
-				if r.err then problems = problems + 1 elseif r.kind ~= "get" and not r.same then changes = changes + 1 end
+				if r.err then
+					problems = problems + 1
+				elseif r.kind ~= "get" and not r.same then
+					changes = changes + 1
+					if r.kind == "set" and app:Waits(r.def) then waits = waits + 1 end
+				end
 			end
 			if #lines == 0 then lines[1] = "|cff" .. hex(T.muted) .. "Nothing to apply yet. Each change shows here before you apply it.|r" end
 			fs:SetText(table.concat(lines, "\n"))
@@ -4428,6 +4842,7 @@ function App:ShowApply(text)
 				f.summary:SetTextColor(rgba(T.ok))
 			else
 				local msg = changes == 0 and "No changes yet." or ("%d change%s ready."):format(changes, changes == 1 and "" or "s")
+				if waits > 0 then msg = msg .. " In combat: they apply when it ends." end
 				if problems > 0 then msg = msg .. (" %d line%s will be skipped."):format(problems, problems == 1 and "" or "s") end
 				f.summary:SetText(msg)
 				f.summary:SetTextColor(rgba(problems > 0 and T.danger or T.muted))
