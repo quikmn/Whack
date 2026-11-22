@@ -223,6 +223,45 @@ for _, k in ipairs(KINDS) do
 	app:Setting(def)
 end
 
+-- Weapon procs: "/whack proc off", "/whack proc.sound off", "/whack proc.size 36".
+local PROC_WORDS = { "proc", "procs", "enchant", "fiery weapon", "crusader", "lifestealing", "boom", "splash" }
+local function ProcWords(more)
+	local t = {}
+	for _, w in ipairs(PROC_WORDS) do t[#t + 1] = w end
+	for _, w in ipairs(more or {}) do t[#t + 1] = w end
+	return t
+end
+local PROC_OPTIONS = {
+	{ "enabled", "proc", "bool", "Weapon procs: big splash when one goes off",
+		"Fiery Weapon, Crusader, Lifestealing and the other weapon enchants: their name and icon pop up in the middle of the screen when they go off.", {} },
+	{ "sound", "proc.sound", "bool", "Weapon procs: play a sound", "A spell impact in the proc's school: fiery for fire, icy for frost...", { "audio", "noise" } },
+	{ "glow", "proc.glow", "bool", "Weapon procs: soft glow on the screen edges", "A short flash of the proc's colour around the edges of the screen.", { "flash", "screen", "edge" } },
+	{ "scroll", "proc.scroll", "bool", "Weapon procs: their hits stand out in the outgoing text",
+		"The proc's own hit shows bigger, with its name and in its school colour (\"Fiery Weapon 40\").", { "outgoing", "name", "bigger" } },
+	{ "blink", "proc.blink", "bool", "Weapon procs: their hits blink as they scroll", "Three quick flashes with a soft glow behind.", { "flash", "pulse", "glow" },
+		{ disabled = function() return not ns.db.procs.scroll end } },
+	{ "size", "proc.size", "number", "Weapon procs: splash size", nil, { "font", "bigger", "smaller", "text size" }, { min = 16, max = 64 } },
+	{ "x", "proc.x", "number", "Weapon procs: splash horizontal position (0 = screen centre)", nil, { "position", "move" }, { min = -1200, max = 1200 } },
+	{ "y", "proc.y", "number", "Weapon procs: splash vertical position", nil, { "position", "move" }, { min = -700, max = 700 } },
+}
+for _, o in ipairs(PROC_OPTIONS) do
+	local field, key, kind, label, desc, words, extra = o[1], o[2], o[3], o[4], o[5], o[6], o[7] or {}
+	local def = {
+		key = key, type = kind, label = label, desc = desc, keywords = ProcWords(words),
+		get = function() return ns.db.procs[field] end,
+		default = function() return ns.DEFAULTS.procs[field] end,
+		set = function(v) ns.db.procs[field] = v end,
+		after = function() ns.Procs:Layout() end,
+	}
+	for k, v in pairs(extra) do def[k] = v end
+	app:Setting(def)
+end
+
+local function ResetProcs()
+	ns.db.procs = ns.Util.CopyTable(ns.DEFAULTS.procs)
+	ns.Procs:Layout()
+end
+
 local function ResetNotify()
 	ns.db.notify = ns.Util.CopyTable(ns.DEFAULTS.notify)
 	ns:ResetArea("notify")
@@ -236,8 +275,13 @@ app:Movable({ what = "the text areas", get = function() return ns.db.locked end,
 app:Reset("outgoing", "the outgoing area", function() ns:ResetArea("outgoing") end)
 app:Reset("incoming", "the incoming area", function() ns:ResetArea("incoming") end)
 app:Reset("notify", "the notifications area and what it shows", ResetNotify)
-app:StatusLines(function() ns.Combat:Status(); ns.Notify:Status() end) -- what Whack has seen since login
-app:Command("test", "test", "fake numbers in both areas", function() ns.Combat:Test() end)
+app:StatusLines(function() ns.Combat:Status(); ns.Procs:Status(); ns.Notify:Status() end) -- what Whack has seen since login
+app:Reset("procs", "the weapon proc boom", ResetProcs)
+app:Command("test", "test [proc]", "fake numbers in both areas (test proc: a fake weapon proc)", function(rest)
+	local w = (rest or ""):lower():match("^(%S*)")
+	if w == "proc" or w == "procs" then ns.Procs:Test() return end
+	ns.Combat:Test(w ~= "" and w or nil)
+end)
 -- "/whack notify on | off | test"; the switch itself is the setting notify.enabled
 app:Command("notify", "notify on || off || test", "loot, skill-ups and more as floating text", function(rest)
 	local w = (rest or ""):lower():match("^(%S*)")
@@ -348,6 +392,28 @@ end
 app:Section("outgoing", "Outgoing", function(stack) BuildArea(stack, "outgoing") end)
 app:Section("incoming", "Incoming", function(stack) BuildArea(stack, "incoming") end)
 app:Section("notify", "Notifications", BuildNotify)
+app:Section("procs", "Weapon procs", function(stack)
+	local function W(key) return app:Widget(stack, key) end
+	UI.Header(stack, "Weapon procs", "A short boom when an enchant on your weapon goes off: Fiery Weapon, Crusader, Lifestealing and more.")
+	UI.ButtonRow(stack, {
+		{ label = "Show a test proc", style = "accent", width = 160, onClick = function() ns.Procs:Test() end },
+		{ label = "Reset", width = 160, confirm = true, keywords = { "defaults" }, onClick = function()
+			ResetProcs()
+			app:Refresh()
+		end },
+	})
+	W("proc")
+	W("proc.sound")
+	W("proc.glow")
+	UI.Header(stack, "In the outgoing text")
+	W("proc.scroll")
+	W("proc.blink")
+	UI.Header(stack, "Splash", "Drag it on screen with Unlock areas (bottom left), or set it exactly here.")
+	W("proc.size")
+	W("proc.x")
+	W("proc.y")
+	UI.Note(stack, "Whack spots a proc when a hit of your enchant's school (fire for Fiery Weapon) lands on your target right after one of your own hits connects, or when the proc's buff or debuff shows up. In a group, another player's spell of the same school landing at that very moment can count too. /whack status shows how many procs you had this session.")
+end)
 app:Section("general", "General", function(stack)
 	UI.Header(stack, "General")
 	app:Widget(stack, "mode")
@@ -355,7 +421,7 @@ app:Section("general", "General", function(stack)
 	app:Widget(stack, "maxtexts")
 	UI.Note(stack, "How it knows what you hit: this client gives addons no combat log, so Whack watches hits on your target and pairs them with your own swings, wand shots and casts. Solo that is exact, unless another player fights your target: then only the hits it can pair with you show. In a group, \"Only mine\" drops hits it cannot pair with something you did, which also drops your damage-over-time ticks. Hits on mobs you are not targeting are not shown.")
 	UI.Header(stack, "Chat commands", "Everything here can also be done from chat.")
-	UI.Note(stack, "/whack  this window\n/whack unlock, /whack lock  move the areas\n/whack test  fake numbers\n/whack notify on, /whack notify test  loot, skill-ups and more\n/whack loot on, /whack rep off, /whack loot.quality uncommon  what it shows\n/whack reset outgoing (incoming, notify)  an area back to its defaults (type it twice)\n/whack status, /whack feedback\n/whack outgoing.fontsize 20  change a setting (/whack get lists them)\n/whack search <words>  find a setting\n/whack help  all of this in chat")
+	UI.Note(stack, "/whack  this window\n/whack unlock, /whack lock  move the areas\n/whack test  fake numbers\n/whack test proc  a fake weapon proc\n/whack notify on, /whack notify test  loot, skill-ups and more\n/whack loot on, /whack rep off, /whack loot.quality uncommon  what it shows\n/whack reset outgoing (incoming, notify)  an area back to its defaults (type it twice)\n/whack status, /whack feedback\n/whack outgoing.fontsize 20  change a setting (/whack get lists them)\n/whack search <words>  find a setting\n/whack help  all of this in chat")
 end)
 
 ------------------------------------------------------------------------

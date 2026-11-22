@@ -67,6 +67,14 @@ ns.DEFAULTS = {
 		notify = Area({ enabled = false, x = 0, y = 210, width = 320, height = 150, fontSize = 15, duration = 3,
 			critScale = 1.3 }),
 	},
+	-- weapon procs (Procs.lua): a short "boom" in the middle-top of the screen when Fiery Weapon & co. go off
+	procs = {
+		enabled = true, -- the big splash
+		sound = true, glow = true,
+		scroll = true,  -- the proc's own hit in the outgoing text: bigger, named, school colour
+		blink = true,   -- and it blinks as it scrolls
+		size = 30, x = 0, y = 250,
+	},
 	-- what the notifications area shows (once it is on): loot and skill-ups, the rest when you tick them
 	notify = {
 		loot = true, quality = 0, money = false, currency = false,
@@ -94,6 +102,7 @@ boot:SetScript("OnEvent", function(self, event, name)
 	ns.db.locked = true -- always start locked
 	ns.Display:Init()
 	ns.Combat:Init()
+	ns.Procs:Init()
 	ns.Notify:Init()
 	self:RegisterEvent("PLAYER_LOGIN")
 	self:RegisterEvent("PLAYER_LOGOUT")

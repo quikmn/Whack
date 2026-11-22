@@ -104,6 +104,7 @@ end
 function D:SetLocked(locked)
 	ns.db.locked = locked and true or false
 	self:LayoutAll()
+	if ns.Procs then ns.Procs:Layout() end
 	if not locked then ns:Print("Areas unlocked: drag them, then /whack lock (or the Lock button).") end
 	if ns.Options.Refresh then ns.Options:Refresh() end
 end
@@ -117,7 +118,8 @@ end
 ------------------------------------------------------------------------
 local function Release(a, i)
 	local t = table.remove(a.active, i)
-	t.mergeKey, t.entry, t.pulse = nil, nil, nil
+	t.mergeKey, t.entry, t.pulse, t.blink = nil, nil, nil, nil
+	if t.glow then t.glow:Hide() end
 	t:Hide()
 	t:ClearAllPoints()
 	a.pool[#a.pool + 1] = t
@@ -189,7 +191,7 @@ function D:Spawn(key, spec)
 	if #a.active >= (ns.db.maxActive or MAX_ACTIVE) then Release(a, 1) end
 
 	local t = Acquire(a)
-	local size = math.floor(c.fontSize * (spec.crit and c.critScale or 1) + 0.5)
+	local size = math.floor(c.fontSize * (spec.crit and c.critScale or 1) * (spec.scale or 1) + 0.5)
 	if not t.text:SetFont(FontPath(c.font), size, c.outline or "") then
 		t.text:SetFont(U.Font(), size, c.outline or "")
 	end
@@ -212,6 +214,21 @@ function D:Spawn(key, spec)
 	local hasIcon = c.showIcon and spec.icon ~= nil
 	if hasIcon then t.icon:SetTexture(spec.icon) end
 	Arrange(t, c, size, hasIcon)
+	-- a weapon proc's hit blinks a few times, with a soft glow in its colour behind it (anchored to the text, so its
+	-- width is never read)
+	t.blink = spec.blink and true or nil
+	if t.blink then
+		if not t.glow then
+			t.glow = t:CreateTexture(nil, "ARTWORK")
+			t.glow:SetTexture("Interface\\Cooldown\\star4")
+			t.glow:SetBlendMode("ADD")
+		end
+		t.glow:ClearAllPoints()
+		t.glow:SetPoint("TOPLEFT", t.text, "TOPLEFT", -size, size * 0.6)
+		t.glow:SetPoint("BOTTOMRIGHT", t.text, "BOTTOMRIGHT", size, -size * 0.6)
+		t.glow:SetVertexColor(col[1], col[2], col[3], 1)
+		t.glow:Show()
+	end
 
 	a.spawned = a.spawned + 1
 	t.born = GetTime()
@@ -327,6 +344,16 @@ function D:Place(a, c, t, now)
 	if t.pulse then
 		local q = (now - t.pulse) / 0.18
 		if q >= 1 then t.pulse = nil else scale = scale * (1 + 0.18 * (1 - q)) end
+	end
+	if t.blink then
+		-- three quick flashes in the first half second, then steady
+		if age < 0.5 then
+			local wave = 0.5 + 0.5 * math.cos(age * math.pi * 12)
+			alpha = alpha * (0.45 + 0.55 * wave)
+			if t.glow then t.glow:SetAlpha(0.25 + 0.6 * wave) end
+		elseif t.glow then
+			t.glow:SetAlpha(math.max(0, 0.25 * (1 - (age - 0.5) / 0.4)))
+		end
 	end
 	t:SetScale(scale)
 	t:ClearAllPoints()

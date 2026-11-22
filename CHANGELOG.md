@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+- Weapon procs go boom: when Fiery Weapon, Crusader, Lifestealing, Demonslaying, Icy Weapon, Unholy Weapon or another weapon enchant goes off, its name and icon pop up big in the middle-top of the screen ("FIERY WEAPON!"), with a short glow in its colour around the edges of the screen and a fitting sound: fiery for fire, icy for frost, dark for shadow, a chime for holy. Both weapons at once make one boom ("x2").
+- The proc's own hit stands out in your outgoing text: bigger, in its colour, with its name ("Fiery Weapon 40"), and it blinks a few times as it scrolls.
+- `/whack status` tells you which proc your weapons have and how many you had this session (and per minute in combat).
+- A new Weapon procs page in the options: the splash, sound and glow on or off, the size, and where it shows (drag it with Unlock areas). From chat: `/whack proc off`, `/whack proc.sound off`, `/whack proc.size 40`; `/whack test proc` shows a fake one.
+
 ## v0.4.0 (2026-11-20)
 - Settings window: switches, buttons and sliders use a softer shade of the accent colour, an on switch has a dark knob so it stands out, and boxes have cleaner rounded edges.
 

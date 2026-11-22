@@ -849,6 +849,298 @@ step("notify: chat commands, test, reset, search, the window page", function()
 	ns.Display:SetLocked(true)
 end)
 
+------------------------------------------------------------------------
+-- Weapon procs
+------------------------------------------------------------------------
+local weaponLinks = {}
+GetInventoryItemLink = function(_, slot) return weaponLinks[slot] end
+local sounds = {}
+PlaySoundFile = function(id) sounds[#sounds + 1] = id; return true end
+local function equip(mh, oh)
+	weaponLinks[16] = mh and ("|cffffffff|Hitem:2207:" .. mh .. ":0:0:0:0:0:0:0|h[Jambiya]|h|r") or nil
+	weaponLinks[17] = oh and ("|cffffffff|Hitem:2208:" .. oh .. ":0:0:0:0:0:0:0|h[Dirk]|h|r") or nil
+	MOCK.Fire("PLAYER_EQUIPMENT_CHANGED", 16, true)
+end
+local P
+local function procReset()
+	MOCK.tickers = {} -- earlier tests' fake-number tickers
+	advance(5)
+	clear()
+	P.count = 0
+	P.booms = 0
+	wipe(sounds)
+	MOCK.RunTimers()
+end
+-- your swing lands, then (same frame or a moment later) the given extra hits
+local function swingWith(...)
+	MOCK.Fire("PLAYER_SWING", 2.0, 0)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(50), 1)
+	for _, h in ipairs({ ... }) do MOCK.Fire("UNIT_COMBAT", "target", h[1], h[2] or "", S(h[3] or 40), h[4]) end
+	MOCK.RunTimers()
+end
+
+step("procs: the enchant is read from your weapon links", function()
+	P = ns.Procs
+	MOCK.SetGroup(1, false)
+	MOCK.units.player.class = "WARRIOR"
+	MOCK.units.target = { name = "Wendigo", npc = true }
+	MOCK.units.targettarget = MOCK.units.player
+	check(ns.PROC_ENCHANTS[803] and ns.PROC_ENCHANTS[803].school == 4, "Fiery Weapon (803) missing or not fire")
+	check(ns.PROC_ENCHANTS[1900].kind == "buff" and ns.PROC_ENCHANTS[1898].school == 32, "Crusader / Lifestealing data")
+	equip(803)
+	check(P.equipped[16] and P.equipped[16].name == "Fiery Weapon", "main hand Fiery Weapon not seen")
+	check(P.equipped[17] == nil, "nothing in the off hand")
+	equip(nil, 1898)
+	check(P.equipped[16] == nil and P.equipped[17].name == "Lifestealing", "off hand Lifestealing")
+	equip(15) -- an enchant without a proc
+	check(not P:HasAny(), "a plain stat enchant is not a proc")
+	-- a secret link is skipped, not parsed
+	local old = GetInventoryItemLink
+	GetInventoryItemLink = function() return S("|Hitem:1:803|h") end
+	MOCK.Fire("PLAYER_EQUIPMENT_CHANGED", 16, true)
+	check(not P:HasAny(), "secret link parsed")
+	GetInventoryItemLink = old
+	equip(803)
+end)
+
+step("procs: a fire hit right after your swing is a Fiery Weapon proc: boom, sound, named blinking text", function()
+	procReset()
+	swingWith({ "WOUND", "", 40, 4 })
+	eq(P.count, 1, "procs counted")
+	check(P:IsBooming(), "no boom")
+	eq(sounds[1], 568461, "fire sound")
+	eq(active("outgoing"), 2, "white hit and proc hit both show")
+	local t = lastText("outgoing")
+	check(t.blink, "the proc's hit should blink")
+	check(t.glow and t.glow:IsShown(), "glow behind the proc's hit")
+	-- the boom is gone after ~0.8 s
+	advance(1); frame()
+	check(not P:IsBooming(), "boom still up after a second")
+	-- the proc report arriving before the white hit in the same frame
+	procReset()
+	MOCK.Fire("PLAYER_SWING", 2.0, 0)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(40), 4)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "CRITICAL", S(90), 1)
+	MOCK.RunTimers()
+	eq(P.count, 1, "proc before its white hit")
+	-- a moment later, in its own frame
+	procReset()
+	swingWith()
+	advance(0.2)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(40), 4)
+	MOCK.RunTimers()
+	eq(P.count, 1, "proc 0.2 s after the hit")
+	-- a resisted proc counts too
+	procReset()
+	swingWith({ "RESIST", "", 0, 4 })
+	eq(P.count, 1, "resisted proc")
+end)
+
+step("procs: no proc without a hit of yours, after a dodge, or in the wrong school", function()
+	procReset()
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(40), 4)
+	MOCK.RunTimers()
+	eq(P.count, 0, "fire hit with no hit of mine")
+	procReset()
+	MOCK.Fire("PLAYER_SWING", 2.0, 0)
+	MOCK.Fire("UNIT_COMBAT", "target", "DODGE", "", S(0), 1)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(40), 4)
+	MOCK.RunTimers()
+	eq(P.count, 0, "after a dodged swing")
+	procReset()
+	swingWith({ "WOUND", "", 40, 32 })
+	eq(P.count, 0, "shadow hit with Fiery Weapon")
+	procReset()
+	swingWith()
+	advance(0.9)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(40), 4)
+	MOCK.RunTimers()
+	eq(P.count, 0, "too long after the hit")
+end)
+
+step("procs: a caster's own fire spell is not a proc", function()
+	MOCK.units.player.class = "MAGE"
+	procReset()
+	MOCK.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-9", 133) -- Fireball
+	advance(1)
+	swingWith({ "WOUND", "", 300, 4 })
+	eq(P.count, 0, "Fireball counted as a proc")
+	eq(active("outgoing"), 2, "the Fireball and the swing still show")
+	check(not lastText("outgoing").blink, "Fireball styled as a proc")
+	-- no cast waiting: it is a proc again
+	procReset()
+	swingWith({ "WOUND", "", 40, 4 })
+	eq(P.count, 1, "mage's real proc")
+	-- a warrior's Charge (a harmful cast with no hit) doesn't hide a proc
+	MOCK.units.player.class = "WARRIOR"
+	procReset()
+	MOCK.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "Cast-10", 100)
+	advance(0.5)
+	swingWith({ "WOUND", "", 40, 4 })
+	eq(P.count, 1, "proc after Charge")
+end)
+
+step("procs: other people's hits in a group", function()
+	MOCK.SetGroup(5, false)
+	MOCK.units.player.class = "WARRIOR"
+	MOCK.units.target = { name = "Wendigo", npc = true }
+	procReset()
+	-- a mage's Fireball on your target, nothing of yours near it: not a proc, not shown
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(300), 4)
+	MOCK.RunTimers()
+	eq(P.count, 0, "someone's Fireball")
+	eq(active("outgoing"), 0, "someone's Fireball shown")
+	-- your own proc still is
+	procReset()
+	swingWith({ "WOUND", "", 40, 4 })
+	eq(P.count, 1, "my proc in a group")
+	eq(active("outgoing"), 2, "my swing and my proc")
+	-- someone's frost bolt with your Fiery Weapon: wrong school
+	procReset()
+	swingWith({ "WOUND", "", 200, 16 })
+	eq(P.count, 0, "someone's Frostbolt")
+	MOCK.SetGroup(1, false)
+	MOCK.units.player.class = "WARRIOR"
+	MOCK.units.target = { name = "Wendigo", npc = true }
+end)
+
+step("procs: both weapons at once merge into one boom; a later one booms again", function()
+	equip(803, 803)
+	procReset()
+	swingWith({ "WOUND", "", 40, 4 }, { "WOUND", "", 41, 4 })
+	eq(P.count, 2, "two procs counted")
+	eq(P.booms, 1, "one boom for both")
+	eq(#sounds, 1, "one sound")
+	advance(0.2)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(42), 4)
+	MOCK.RunTimers()
+	eq(P.booms, 1, "0.2 s later: still merged")
+	advance(0.6); frame()
+	swingWith({ "WOUND", "", 40, 4 })
+	eq(P.booms, 2, "a new boom later")
+	equip(803)
+end)
+
+step("procs: buff procs (Crusader) from your auras, debuff procs (Icy Weapon) on your target", function()
+	equip(1900)
+	procReset()
+	MOCK.Fire("UNIT_AURA", "player", { addedAuras = { { spellId = 20007, auraInstanceID = 7, expirationTime = MOCK.time + 15 } } })
+	eq(P.count, 1, "Holy Strength gained")
+	eq(sounds[1], 569770, "holy sound")
+	-- refreshed while up
+	local old = C_UnitAuras.GetAuraDataByAuraInstanceID
+	C_UnitAuras.GetAuraDataByAuraInstanceID = function(_, inst)
+		if inst == 7 then return { spellId = 20007, auraInstanceID = 7, expirationTime = MOCK.time + 15 } end
+	end
+	advance(3)
+	MOCK.Fire("UNIT_AURA", "player", { updatedAuraInstanceIDs = { 7 } })
+	eq(P.count, 2, "Holy Strength refreshed")
+	-- an unrelated buff, a secret aura, secret fields, secret info, a full update: nothing, no errors
+	MOCK.Fire("UNIT_AURA", "player", { addedAuras = { { spellId = 1234, auraInstanceID = 8 } } })
+	MOCK.Fire("UNIT_AURA", "player", { addedAuras = { S({ spellId = 20007 }) } })
+	MOCK.Fire("UNIT_AURA", "player", { addedAuras = { { spellId = S(20007), auraInstanceID = S(9), expirationTime = S(5) } } })
+	MOCK.Fire("UNIT_AURA", "player", S({}))
+	MOCK.Fire("UNIT_AURA", "player", { isFullUpdate = true })
+	MOCK.Fire("UNIT_AURA", "player", nil)
+	MOCK.Fire("UNIT_AURA", "player", { updatedAuraInstanceIDs = { S(7) }, removedAuraInstanceIDs = { 7 } })
+	eq(P.count, 2, "secret or unrelated auras counted")
+	C_UnitAuras.GetAuraDataByAuraInstanceID = old
+	-- Icy Weapon: its slow on your target, from you
+	equip(1894)
+	procReset()
+	MOCK.Fire("UNIT_AURA", "target", { addedAuras = { { spellId = 20005, auraInstanceID = 20, sourceUnit = "player" } } })
+	eq(P.count, 1, "Chilled from me")
+	eq(sounds[1], 569358, "frost sound")
+	MOCK.Fire("UNIT_AURA", "target", { addedAuras = { { spellId = 20005, auraInstanceID = 21, sourceUnit = "party1", isFromPlayerOrPlayerPet = false } } })
+	eq(P.count, 1, "someone else's Chilled")
+	-- Chilled resisted after your swing
+	procReset()
+	swingWith({ "RESIST", "", 0, 16 })
+	eq(P.count, 1, "Chilled resisted")
+	-- a plain frost hit can't be Icy Weapon (it does no damage)
+	procReset()
+	swingWith({ "WOUND", "", 40, 16 })
+	eq(P.count, 0, "frost damage counted as Icy Weapon")
+	equip(803)
+end)
+
+step("procs: detected with the outgoing area off; no boom when it is off", function()
+	SlashCmdList.WHACK("outgoing.enabled off")
+	procReset()
+	swingWith({ "WOUND", "", 40, 4 })
+	eq(P.count, 1, "proc with outgoing off")
+	check(P:IsBooming(), "boom with outgoing off")
+	eq(active("outgoing"), 0, "outgoing text while off")
+	SlashCmdList.WHACK("outgoing.enabled on")
+	advance(1); frame()
+	SlashCmdList.WHACK("proc off")
+	eq(ns.db.procs.enabled, false, "proc off")
+	procReset()
+	swingWith({ "WOUND", "", 40, 4 })
+	eq(P.count, 1, "still counted")
+	check(not P:IsBooming(), "boomed while off")
+	eq(#sounds, 0, "sound while off")
+	SlashCmdList.WHACK("proc on")
+	SlashCmdList.WHACK("proc.sound off")
+	procReset()
+	swingWith({ "WOUND", "", 40, 4 })
+	check(P:IsBooming() and #sounds == 0, "sound off")
+	SlashCmdList.WHACK("proc.sound on")
+	-- the outgoing styling can be switched off
+	SlashCmdList.WHACK("proc.scroll off")
+	advance(1); frame()
+	procReset()
+	swingWith({ "WOUND", "", 40, 4 })
+	check(not lastText("outgoing").blink, "plain text when proc.scroll is off")
+	SlashCmdList.WHACK("proc.scroll on")
+	SlashCmdList.WHACK("proc.blink off")
+	advance(1); frame()
+	procReset()
+	swingWith({ "WOUND", "", 40, 4 })
+	check(not lastText("outgoing").blink, "no blink when proc.blink is off")
+	SlashCmdList.WHACK("proc.blink on")
+	check(#MOCK.errors == 0, table.concat(MOCK.errors, "\n"))
+end)
+
+step("procs: settings, test, status, search, unlock, reset", function()
+	SlashCmdList.WHACK("proc.size 40")
+	eq(ns.db.procs.size, 40, "proc.size")
+	SlashCmdList.WHACK("proc.glow off")
+	eq(ns.db.procs.glow, false, "proc.glow")
+	SlashCmdList.WHACK("proc.y 300")
+	eq(ns.db.procs.y, 300, "proc.y")
+	advance(1); frame()
+	procReset()
+	SlashCmdList.WHACK("test proc")
+	check(P:IsBooming(), "/whack test proc didn't boom")
+	check(lastText("outgoing") and lastText("outgoing").blink, "test proc's outgoing text")
+	eq(P.count, 0, "a test is not counted")
+	MOCK.log = {}
+	SlashCmdList.WHACK("status")
+	local found
+	for _, l in ipairs(MOCK.log) do if l:find("weapon procs: Fiery Weapon", 1, true) then found = l end end
+	check(found, "status line missing: " .. table.concat(MOCK.log, " | "))
+	for _, word in ipairs({ "proc", "fiery weapon", "crusader", "boom", "sound", "glow", "blink" }) do
+		local r = ns.app:Search(word)
+		local hit
+		for _, x in ipairs(r) do
+			if x.entry.path:find("Weapon procs", 1, true) then hit = true end
+		end
+		check(hit, "search '" .. word .. "' doesn't find a proc setting")
+	end
+	ns.app:Search("")
+	ns.Options:ShowPage("procs")
+	ns.Options:Refresh()
+	ns.app:Close()
+	ns.Display:SetLocked(false)
+	check(_G.WhackProcSplash.mover:IsShown(), "splash mover hidden while unlocked")
+	ns.Display:SetLocked(true)
+	check(not _G.WhackProcSplash.mover:IsShown(), "splash mover shown while locked")
+	SlashCmdList.WHACK("reset procs"); SlashCmdList.WHACK("reset procs")
+	check(ns.db.procs.size == 30 and ns.db.procs.glow == true and ns.db.procs.y == 250, "reset procs")
+	check(#MOCK.errors == 0, table.concat(MOCK.errors, "\n"))
+end)
+
 step("no Lua errors reported", function()
 	check(#MOCK.errors == 0, table.concat(MOCK.errors, "\n"))
 end)

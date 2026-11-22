@@ -116,7 +116,7 @@ function C:OnSwing(swingType)
 		return
 	end
 	local slot = (swingType == 1 or swingType == "OffHand") and OFFHAND or MAINHAND
-	swings[#swings + 1] = { t = now, icon = SlotIcon(slot) }
+	swings[#swings + 1] = { t = now, icon = SlotIcon(slot), melee = true }
 	if #swings > 8 then table.remove(swings, 1) end
 end
 
@@ -163,14 +163,42 @@ function C:Attribute(hit)
 	return src
 end
 
+-- Is one of your casts still waiting for its hit? Weapon procs (Procs.lua) ask before taking a hit of their school:
+-- a caster's own Fireball must stay a Fireball. school: the hit's school; fits(cast) says if the cast could be it.
+function C:PendingCast(now, fits)
+	for _, e in ipairs(casts) do
+		if not e.used and math.abs(now - e.t) <= CAST_WINDOW and fits(e) then return true end
+	end
+	return false
+end
+
 ------------------------------------------------------------------------
 -- Building the text
 ------------------------------------------------------------------------
+-- A weapon proc's hit: bigger, in its school colour, with its name ("Fiery Weapon 40"), blinking as it scrolls.
+local function ProcSpec(c, hit, spec, proc)
+	local name = proc.name:gsub("%%", "%%%%")
+	spec.color = SCHOOL[proc.school] or spec.color
+	spec.scale = 1.35
+	spec.blink = ns.db.procs.blink
+	if hit.action ~= "WOUND" then
+		spec.text = proc.name .. " " .. (MISS[hit.action] or ""):lower()
+		return
+	end
+	spec.amount = hit.amount
+	spec.fmt = name .. " %s" .. ((spec.crit and c.critBang) and "!" or "")
+end
+
 function C:Outgoing(hit, src)
 	local c = ns.db.areas.outgoing
 	local flag = hit.flag
 	local crit = flag == "CRITICAL"
 	local spec = { crit = crit, icon = src and src.icon }
+	if src and src.proc and ns.db.procs.scroll then
+		ProcSpec(c, hit, spec, src.proc)
+		ns.Display:Spawn("outgoing", spec)
+		return
+	end
 	if hit.action == "WOUND" then
 		spec.color = SchoolColor(c, hit.school, c.color or WHITE)
 		local amt = num(hit.amount)
@@ -265,10 +293,30 @@ local function Flush()
 	-- A hit none of your swings or casts explains (a damage-over-time tick, your pet): solo it is yours, unless someone
 	-- else is fighting your target. In a group "Only mine" drops it.
 	local soloMine = not grouped and not C:OthersOnTarget()
+	local P = ns.Procs
+	-- Two passes: first every ordinary hit (so a white hit that arrives with its proc is matched first and counts as
+	-- a landed hit), then the hits that could be a weapon proc.
 	for _, hit in ipairs(list) do
-		local src = C:Attribute(hit)
-		if src or mode == "all" or soloMine then
-			C:Outgoing(hit, src)
+		hit.procDef = P:Candidate(hit)
+		if not hit.procDef then
+			hit.src = C:Attribute(hit)
+			P:NoteHit(hit, hit.src, channel)
+		end
+	end
+	for _, hit in ipairs(list) do
+		if hit.procDef then
+			if P:IsProc(hit, hit.procDef) then
+				hit.src = { icon = P:Icon(hit.procDef), proc = hit.procDef }
+				P:Proc(hit.procDef, hit.t)
+			else
+				hit.src = C:Attribute(hit)
+			end
+		end
+	end
+	if not ns.db.areas.outgoing.enabled then return end
+	for _, hit in ipairs(list) do
+		if hit.src or mode == "all" or soloMine then
+			C:Outgoing(hit, hit.src)
 		end
 	end
 end
@@ -287,7 +335,7 @@ function C:OnUnitCombat(unit, action, flag, amount, school)
 		if ns.db.areas.incoming.enabled then self:Incoming(action, flag, amount, school) end
 		return
 	end
-	if unit ~= "target" or not ns.db.areas.outgoing.enabled then return end
+	if unit ~= "target" or not (ns.db.areas.outgoing.enabled or ns.Procs:Watching()) then return end
 	if action ~= "WOUND" and not MISS[action] then return end
 	if UnitIsUnit and UnitIsUnit("target", "player") then return end
 	pending[#pending + 1] = { t = GetTime(), action = action, flag = flag, amount = amount, school = school }
