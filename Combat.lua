@@ -303,6 +303,13 @@ local function Flush()
 			P:NoteHit(hit, hit.src, channel)
 		end
 	end
+	-- The hit's school hidden (a secret in combat): a second hit that came with one of your own landed hits, and that
+	-- no swing or cast of yours explains, is your damage proc (Procs.lua decides if you have one).
+	for _, hit in ipairs(list) do
+		if not hit.procDef and not hit.src and hit.schoolHidden and hit.action == "WOUND" then
+			hit.procDef = P:HiddenSchoolCandidate(hit)
+		end
+	end
 	for _, hit in ipairs(list) do
 		if hit.procDef then
 			if P:IsProc(hit, hit.procDef) then
@@ -313,6 +320,7 @@ local function Flush()
 			end
 		end
 	end
+	if P.Debug then for _, hit in ipairs(list) do P:Debug(hit) end end
 	if not ns.db.areas.outgoing.enabled then return end
 	for _, hit in ipairs(list) do
 		if hit.src or mode == "all" or soloMine then
@@ -330,6 +338,7 @@ function C:OnUnitCombat(unit, action, flag, amount, school)
 	seen[bucket] = seen[bucket] + 1
 	action = str(action)
 	flag = str(flag)
+	local schoolHidden = school ~= nil and not readable(school)
 	school = num(school)
 	if unit == "player" then
 		if ns.db.areas.incoming.enabled then self:Incoming(action, flag, amount, school) end
@@ -338,7 +347,7 @@ function C:OnUnitCombat(unit, action, flag, amount, school)
 	if unit ~= "target" or not (ns.db.areas.outgoing.enabled or ns.Procs:Watching()) then return end
 	if action ~= "WOUND" and not MISS[action] then return end
 	if UnitIsUnit and UnitIsUnit("target", "player") then return end
-	pending[#pending + 1] = { t = GetTime(), action = action, flag = flag, amount = amount, school = school }
+	pending[#pending + 1] = { t = GetTime(), action = action, flag = flag, amount = amount, school = school, schoolHidden = schoolHidden }
 	if not flushQueued then
 		flushQueued = true
 		C_Timer.After(DEFER, Flush)

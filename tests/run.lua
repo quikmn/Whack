@@ -934,6 +934,19 @@ step("procs: a fire hit right after your swing is a Fiery Weapon proc: boom, sou
 	procReset()
 	swingWith({ "RESIST", "", 0, 4 })
 	eq(P.count, 1, "resisted proc")
+	-- the school hidden in combat (a secret): the extra hit that came with your swing is the proc
+	procReset()
+	MOCK.Fire("PLAYER_SWING", 2.0, 0)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(7), S(1))
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(40), S(4))
+	MOCK.RunTimers()
+	eq(P.count, 1, "proc with the school hidden")
+	-- hidden school, but only the white hit: nothing
+	procReset()
+	MOCK.Fire("PLAYER_SWING", 2.0, 0)
+	MOCK.Fire("UNIT_COMBAT", "target", "WOUND", "", S(7), S(1))
+	MOCK.RunTimers()
+	eq(P.count, 0, "no proc from a lone white hit")
 end)
 
 step("procs: no proc without a hit of yours, after a dodge, or in the wrong school", function()

@@ -107,6 +107,28 @@ function P:NoteHit(hit, src, channel)
 	if src.melee or hit.school == 1 or hit.school == nil then lastHit = hit.t end
 end
 
+-- The school is hidden: your one damage proc, if you have exactly one kind (it can only be judged by timing then)
+function P:HiddenSchoolCandidate(hit)
+	local found
+	for _, def in pairs(bySchool) do
+		if def.kind == "hit" then
+			if found and found ~= def then return nil end
+			found = def
+		end
+	end
+	return found
+end
+
+-- /whack debug procs: every hit on your target for two minutes, with what Whack made of it
+P.debugUntil = 0
+function P:Debug(hit)
+	if (GetTime and GetTime() or 0) > self.debugUntil then return end
+	local school = hit.school and tostring(hit.school) or (hit.schoolHidden and "hidden" or "none")
+	local what = hit.src and (hit.src.proc and ("PROC " .. hit.src.proc.name) or (hit.src.melee and "your swing") or (hit.src.wand and "wand") or "your cast") or "not yours"
+	local since = lastHit and ("%.2f"):format(hit.t - lastHit) or "-"
+	print(("|cffff8800Whack|r hit: %s %s school %s -> %s (since your last hit %s s)"):format(hit.action or "?", hit.flag or "", school, what, since))
+end
+
 function P:IsProc(hit, def)
 	if not lastHit or hit.t - lastHit > AFTER_HIT or lastHit - hit.t > 0.1 then return false end
 	local _, class = UnitClass("player")

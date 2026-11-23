@@ -277,6 +277,10 @@ app:Reset("incoming", "the incoming area", function() ns:ResetArea("incoming") e
 app:Reset("notify", "the notifications area and what it shows", ResetNotify)
 app:StatusLines(function() ns.Combat:Status(); ns.Procs:Status(); ns.Notify:Status() end) -- what Whack has seen since login
 app:Reset("procs", "the weapon proc boom", ResetProcs)
+app:Command("debug", "debug procs", "for two minutes, a chat line for every hit on your target and what Whack made of it", function()
+	ns.Procs.debugUntil = (GetTime and GetTime() or 0) + 120
+	ns:Print("logging every hit on your target for two minutes: fight something with your weapon, then send a screenshot of the chat")
+end)
 app:Command("test", "test [proc]", "fake numbers in both areas (test proc: a fake weapon proc)", function(rest)
 	local w = (rest or ""):lower():match("^(%S*)")
 	if w == "proc" or w == "procs" then ns.Procs:Test() return end
