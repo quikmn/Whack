@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.5.1 (2026-11-23)
 - Weapon procs: found by their timing too when the game hides the damage type in combat.
 - `/whack debug procs`: for two minutes, a chat line for every hit on your target and what Whack made of it.
 
