@@ -233,7 +233,7 @@ local function ProcWords(more)
 end
 local PROC_OPTIONS = {
 	{ "enabled", "proc", "bool", "Weapon procs: big splash when one goes off",
-		"Fiery Weapon, Crusader, Lifestealing and the other weapon enchants: their name and icon pop up in the middle of the screen when they go off.", {} },
+		"Fiery Weapon, Crusader, Lifestealing and other weapon enchants: their name and icon pop up mid-screen when they go off.", {} },
 	{ "sound", "proc.sound", "bool", "Weapon procs: play a sound", "A spell impact in the proc's school: fiery for fire, icy for frost...", { "audio", "noise" } },
 	{ "glow", "proc.glow", "bool", "Weapon procs: soft glow on the screen edges", "A short flash of the proc's colour around the edges of the screen.", { "flash", "screen", "edge" } },
 	{ "scroll", "proc.scroll", "bool", "Weapon procs: their hits stand out in the outgoing text",

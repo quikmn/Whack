@@ -1154,6 +1154,22 @@ step("procs: settings, test, status, search, unlock, reset", function()
 	check(#MOCK.errors == 0, table.concat(MOCK.errors, "\n"))
 end)
 
+step("no setting description is cut off mid-word", function()
+	for _, id in ipairs({ "outgoing", "incoming", "notify", "procs", "general" }) do ns.Options:ShowPage(id) end
+	local n = 0
+	for _, e in ipairs(ns.app:SearchEntries()) do
+		local full = e.frame and e.frame.searchInfo and e.frame.searchInfo.desc
+		if type(full) == "string" and full ~= "" then
+			n = n + 1
+			-- a long description shows its first sentence (the tooltip has the rest); one long sentence gets cut mid-word
+			local shown = LibStub("EverlookUI-1").ShortDesc(full)
+			check(shown ~= full:sub(1, 117) .. "...", "description cut off mid-word: " .. tostring(e.path) .. ": " .. full)
+		end
+	end
+	check(n > 10, "only " .. n .. " descriptions found")
+	ns.app:Close()
+end)
+
 step("no Lua errors reported", function()
 	check(#MOCK.errors == 0, table.concat(MOCK.errors, "\n"))
 end)
