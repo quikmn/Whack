@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.5.2 (2026-11-26)
 - Weapon procs page: the splash setting's description is shown in full (it was cut off with "...").
 
 ## v0.5.1 (2026-11-23)
