@@ -63,8 +63,9 @@ ns.DEFAULTS = {
 	areas = {
 		outgoing = Area({ x = 260, y = 40 }),
 		incoming = Area({ x = -260, y = 40, direction = "down", fontSize = 16, critScale = 1.35, color = { 1, 0.25, 0.25 } }),
-		-- loot, skill-ups and the rest (Notify.lua): off until you turn it on; calmer and slower than the hits
-		notify = Area({ enabled = false, x = 0, y = 210, width = 320, height = 150, fontSize = 15, duration = 3,
+		-- loot, skill-ups and the rest (Notify.lua): off until you turn it on; calmer and slower than the hits. Under
+		-- the weapon proc splash (y 250), between the two hit areas, so the boxes never overlap when unlocked
+		notify = Area({ enabled = false, x = 0, y = 130, width = 320, height = 150, fontSize = 15, duration = 3,
 			critScale = 1.3 }),
 	},
 	-- weapon procs (Procs.lua): a short "boom" in the middle-top of the screen when Fiery Weapon & co. go off
@@ -99,6 +100,9 @@ boot:SetScript("OnEvent", function(self, event, name)
 	self:UnregisterEvent("ADDON_LOADED")
 	WhackDB = WhackDB or {}
 	ns.db = U.FillDefaults(WhackDB, ns.DEFAULTS)
+	-- the notifications box's first spot (y 210) sat under the weapon proc splash: never moved, it moves down
+	local n, pr = ns.db.areas.notify, ns.db.procs
+	if n.x == 0 and n.y == 210 and pr.x == 0 and pr.y == 250 then n.y = ns.DEFAULTS.areas.notify.y end
 	ns.db.locked = true -- always start locked
 	ns.Display:Init()
 	ns.Combat:Init()

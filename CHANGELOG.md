@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+- Unlock areas: the Notifications box now starts under the weapon proc box instead of on top of it. If you never moved it, it moves there by itself.
+- Settings search: the sidebar lights the page of the top result while you search.
+
 ## v0.5.2 (2026-11-26)
 - Weapon procs page: the splash setting's description is shown in full (it was cut off with "...").
 

@@ -48,7 +48,7 @@
 -- for the window. UI.RegisterWindow(frame, { title = "Name" or fn(frame), icon = ..., noTaskbar = true }) adds to or
 -- changes that; UI.apps lists every app made by this copy or a later one (name, slash, pages for a Start menu).
 local LIB_ADDON = ... -- the folder of the addon whose copy this is (its Media\ sits next to this file)
-local MAJOR, MINOR = "EverlookUI-1", 14
+local MAJOR, MINOR = "EverlookUI-1", 15
 local UI = LibStub:NewLibrary(MAJOR, MINOR)
 if not UI then return end
 UI.version = MINOR
@@ -1537,6 +1537,34 @@ function UI.List(stack, opt)
 	empty:SetPoint("TOPLEFT", 4, -4)
 	empty:SetText(opt.empty or "Nothing here yet.")
 
+	-- Packs the shown buttons against the right edge; the title and detail run up to the leftmost one, so a hidden
+	-- button leaves no gap (EverlookUI 15). Only re-anchors when the shown set changed.
+	local function layoutRow(r)
+		local right = -6
+		for bi = #(opt.buttons or {}), 1, -1 do
+			local b = r.buttons[bi]
+			if b:IsShown() then
+				b:ClearAllPoints()
+				b:SetPoint("RIGHT", right, 0)
+				right = right - (opt.buttons[bi].width or 90) - 6
+			end
+		end
+		if r.right == right then return end
+		r.right = right
+		r.title:ClearAllPoints()
+		r.detail:ClearAllPoints()
+		if twoLine then
+			r.title:SetPoint("TOPLEFT", r.textLeft, -6)
+			r.title:SetPoint("RIGHT", right - 4, 0)
+			r.detail:SetPoint("TOPLEFT", r.title, "BOTTOMLEFT", 0, -4)
+			r.detail:SetPoint("RIGHT", right - 4, 0)
+		else
+			r.title:SetPoint("LEFT", r.textLeft, 0)
+			r.detail:SetPoint("LEFT", r.title, "RIGHT", 10, 0)
+			r.detail:SetPoint("RIGHT", right - 4, 0)
+		end
+	end
+
 	local function newRow(i)
 		local r = CreateFrame("Button", nil, f)
 		r:SetHeight(rowH)
@@ -1578,34 +1606,30 @@ function UI.List(stack, opt)
 			local make = d.confirm and UI.ConfirmButton or UI.Button
 			local b = make(r, type(d.label) == "string" and d.label or "", function(btn) if r.item ~= nil then d.onClick(r.item, btn) end end, d.width or 90, d.style)
 			b:SetHeight(math.min(22, rowH - 6))
-			b:SetPoint("RIGHT", right, 0)
-			right = right - (d.width or 90) - 6
 			r.buttons[bi] = b
 		end
 		r.title = Text(r, T.font, T.text)
 		r.title:SetWordWrap(false)
 		r.detail = Text(r, twoLine and T.fontSmall + 1 or T.font, T.muted)
 		r.detail:SetWordWrap(false)
-		if twoLine then
-			r.title:SetPoint("TOPLEFT", x, -6)
-			r.title:SetPoint("RIGHT", right - 4, 0)
-			r.detail:SetPoint("TOPLEFT", r.title, "BOTTOMLEFT", 0, -4)
-			r.detail:SetPoint("RIGHT", right - 4, 0)
-		else
-			r.title:SetPoint("LEFT", x, 0)
-			r.detail:SetPoint("LEFT", r.title, "RIGHT", 10, 0)
-			r.detail:SetPoint("RIGHT", right - 4, 0)
-		end
+		r.textLeft = x
+		r.right = nil
+		layoutRow(r)
 		r.titleMax = (opt.titleWidth or 220)
 		r:SetScript("OnEnter", function(self)
 			self.bg:SetVertexColor(rgba(T.surfaceHi))
-			if self.item == nil or not opt.tooltip then return end
-			local tip = opt.tooltip(self.item, self)
+			if self.item == nil then return end
+			local tip = opt.tooltip and opt.tooltip(self.item, self)
+			-- a title or detail cut off with "..." shows whole in the tooltip (EverlookUI 15)
+			local cut = function(fs) return fs.IsTruncated and fs:IsTruncated() and fs:GetText() or nil end
+			local cutTitle, cutDetail = cut(self.title), cut(self.detail)
+			if tip == nil and (cutTitle or cutDetail) then tip = { self.title:GetText() or "" } end
 			if type(tip) == "table" then
 				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 				for li, line in ipairs(tip) do
 					if li == 1 then GameTooltip:AddLine(line, 1, 1, 1) else GameTooltip:AddLine(line, nil, nil, nil, true) end
 				end
+				if cutDetail then GameTooltip:AddLine(cutDetail, 0.6, 0.62, 0.68, true) end
 				GameTooltip:Show()
 			end
 		end)
@@ -1661,6 +1685,7 @@ function UI.List(stack, opt)
 				b:SetShown(not d.shown or d.shown(item) and true or false)
 				b:SetUsable(not d.usable or d.usable(item) and true or false)
 			end
+			layoutRow(r)
 			r:Show()
 		end
 		for i = n + 1, #f.rows do f.rows[i].item = nil; f.rows[i]:Hide() end
@@ -3154,6 +3179,8 @@ function App:Search(text)
 	self.searchQuery = q
 	local results = Search.Match(entries, q, Listed)
 	self:ShowResults(results, q, entries)
+	self.searchLit = results[1] and results[1].entry and results[1].entry.sectionId or nil
+	self:PaintNav()
 	if f.pageTitle then
 		for _, d in pairs(self.previews or {}) do if d.frame then d.frame:Hide() end end
 		f.pageTitle:SetText("Search results")
@@ -3242,6 +3269,8 @@ function App:StopSearch(leaving)
 	if f and f.searchBox and f.searchBox:GetText() ~= "" then f.searchBox:SetText("") end
 	if not self.searching then return end
 	self.searching = nil
+	self.searchLit = nil
+	self:PaintNav()
 	self:ReturnBorrowed()
 	ClosePopup()
 	f.results:Hide()
@@ -3722,11 +3751,11 @@ function App:CreateWindow()
 			b.text:SetWordWrap(false)
 			b.text:SetText(s.title)
 			b:SetScript("OnEnter", function(self)
-				if app.current ~= id then self.hover:Show(); self.text:SetTextColor(rgba(T.text)) end
+				if not self.bg:IsShown() then self.hover:Show(); self.text:SetTextColor(rgba(T.text)) end
 			end)
 			b:SetScript("OnLeave", function(self)
 				self.hover:Hide()
-				if app.current ~= id then self.text:SetTextColor(rgba(T.muted)) end
+				if not self.bg:IsShown() then self.text:SetTextColor(rgba(T.muted)) end
 			end)
 			b:SetScript("OnClick", function() app:ShowSection(id) end)
 			f.navButtons[id] = b
@@ -4129,8 +4158,11 @@ end
 function App:PaintNav()
 	local f = self.window
 	if not f or not f.navButtons then return end
+	-- while searching, the top result's page is lit (the sidebar follows the results; EverlookUI 15)
+	local lit = self.current
+	if self.searching then lit = self.searchLit end
 	for sid, b in pairs(f.navButtons) do
-		local active = sid == self.current
+		local active = sid == lit
 		b.bg:SetShown(active)
 		b.bar:SetShown(active)
 		b.text:SetTextColor(rgba(active and self.T.text or self.T.muted))
