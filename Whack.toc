@@ -2,7 +2,7 @@
 ## Title: Whack
 ## Notes: Scrolling combat text: your hits and the hits you take, where and how you want them.
 ## Author: quikmn
-## Version: 0.5.2
+## Version: 0.5.3
 ## SavedVariables: WhackDB
 ## IconTexture: Interface\Icons\INV_Wand_07
 

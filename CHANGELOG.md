@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.5.3 (2026-11-26)
 - Unlock areas: the Notifications box now starts under the weapon proc box instead of on top of it. If you never moved it, it moves there by itself.
 - Settings search: the sidebar lights the page of the top result while you search.
 
